@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Billiards replay</title>
+<style>
+  :root {
+    --felt: #146d3f;
+    --felt-dark: #0e5530;
+    --cushion: #6b3a1f;
+    --cushion-light: #8a4f2d;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #1c1c1c;
+    color: #ddd;
+    margin: 0;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .frame {
+    background: linear-gradient(180deg, var(--cushion-light), var(--cushion));
+    padding: 18px;
+    border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), inset 0 0 0 2px rgba(0,0,0,0.25);
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  #table {
+    position: relative;
+    background:
+      radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .ball {
+    position: absolute;
+    left: 0;
+    top: 0;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: #2a2a2a;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .controls button {
+    background: #3a3a3a;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 5px;
+    padding: 6px 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .controls button:hover { background: #4a4a4a; }
+  .controls input[type=range] { width: 140px; }
+  .controls .info { color: #aaa; font-variant-numeric: tabular-nums; min-width: 90px; }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div id="table"></div>
+  </div>
+  <div class="controls">
+    <button id="play">⏸ Pause</button>
+    <button id="restart">⟲ Restart</button>
+    <label>Speed
+      <input type="range" id="speed" min="0.25" max="4" step="0.25" value="1">
+      <span id="speed-label">1.00x</span>
+    </label>
+    <span class="info" id="time-label">t = 0.000s</span>
+  </div>
+
+  <script id="traj" type="application/json">{{TRAJ_JSON}}</script>
+  <script id="spec" type="application/json">{{SPEC_JSON}}</script>
+
+  <style id="sprites">
+    .ball-0 { background-image: url('{{SPRITE_WHITE_DATAURL}}'); }
+    .ball-1 { background-image: url('{{SPRITE_YELLOW_DATAURL}}'); }
+    .ball-2 { background-image: url('{{SPRITE_RED_DATAURL}}'); }
+    .ball-3 { background-image: url('{{SPRITE_RED_DATAURL}}'); }
+  </style>
+
+  <script>
+  (function () {
+    const traj = JSON.parse(document.getElementById('traj').textContent);
+    const spec = JSON.parse(document.getElementById('spec').textContent);
+
+    // Fit table to available container width (Jupyter cells ≈ 800-1000 px wide).
+    // Compute from the .frame padding and a sensible default.
+    const FRAME_PADDING_PX = 18 * 2 + 12 * 2;   // .frame padding × 2 + body padding × 2
+    const containerW = Math.max(
+      300,
+      Math.min(window.innerWidth - 4, document.body.clientWidth || window.innerWidth)
+    );
+    const TABLE_PX_W = Math.max(360, Math.min(900, containerW - FRAME_PADDING_PX));
+    const pxPerM = TABLE_PX_W / spec.width_m;
+    const TABLE_PX_H = Math.round(spec.height_m * pxPerM);
+    const ballPx = Math.max(8, Math.round(spec.ball_radius_m * 2 * pxPerM));
+
+    const tableEl = document.getElementById('table');
+    tableEl.style.width  = TABLE_PX_W + 'px';
+    tableEl.style.height = TABLE_PX_H + 'px';
+
+    // Determine ball count from first frame (trajectory may be empty).
+    const N = (traj.frames && traj.frames.length > 0)
+      ? traj.frames[0].balls.length
+      : (spec.initial && spec.initial.length) || 4;
+
+    const balls = [];
+    for (let i = 0; i < N; i++) {
+      const el = document.createElement('div');
+      el.className = 'ball ball-' + i;
+      el.id = 'ball-' + i;
+      el.style.width  = ballPx + 'px';
+      el.style.height = ballPx + 'px';
+      tableEl.appendChild(el);
+      balls.push({el: el, rot: 0});
+    }
+
+    function metersToPx(x_m, y_m) {
+      // +x = long axis (table width in px)
+      // +y = short axis (table height in px)
+      return [x_m * pxPerM, y_m * pxPerM];
+    }
+
+    function setPos(i, x_m, y_m, rotDeg) {
+      const [px, py] = metersToPx(x_m, y_m);
+      // -50%, -50% offset centers the sprite on the ball position.
+      const tr = 'translate3d(calc(' + px + 'px - 50%), calc(' + py + 'px - 50%), 0)'
+               + (rotDeg ? ' rotate(' + rotDeg + 'deg)' : '');
+      balls[i].el.style.transform = tr;
+    }
+
+    // Initial layout: prefer first traj frame, else spec.initial fallback.
+    const initial = (traj.frames && traj.frames.length > 0)
+      ? traj.frames[0].balls
+      : (spec.initial || []);
+    for (let i = 0; i < N; i++) {
+      const b = initial[i] || [0, 0];
+      setPos(i, b[0], b[1], 0);
+    }
+
+    // ----- animation -----
+    const frames = traj.frames || [];
+    const haveFrames = frames.length > 0;
+    let playing = haveFrames;
+    let cursor = 0.0;       // simulated seconds
+    let lastTs = null;
+    let speed = 1.0;
+    const tMax = haveFrames ? frames[frames.length - 1].t : 0;
+
+    const playBtn = document.getElementById('play');
+    const restartBtn = document.getElementById('restart');
+    const speedEl = document.getElementById('speed');
+    const speedLabel = document.getElementById('speed-label');
+    const timeLabel = document.getElementById('time-label');
+
+    function updateTimeLabel() {
+      timeLabel.textContent = 't = ' + cursor.toFixed(3) + 's';
+    }
+
+    function setPlaying(p) {
+      playing = p && haveFrames;
+      playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    }
+    setPlaying(haveFrames);
+
+    playBtn.addEventListener('click', () => setPlaying(!playing));
+    restartBtn.addEventListener('click', () => {
+      cursor = 0.0;
+      lastTs = null;
+      setPlaying(haveFrames);
+      drawAt(0.0);
+      updateTimeLabel();
+    });
+    speedEl.addEventListener('input', () => {
+      speed = parseFloat(speedEl.value);
+      speedLabel.textContent = speed.toFixed(2) + 'x';
+    });
+
+    function findIndex(t) {
+      // binary search for largest frame index with frames[i].t <= t.
+      let lo = 0, hi = frames.length - 1;
+      if (t <= frames[0].t) return 0;
+      if (t >= frames[hi].t) return hi;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >>> 1;
+        if (frames[mid].t <= t) lo = mid; else hi = mid - 1;
+      }
+      return lo;
+    }
+
+    function drawAt(t) {
+      if (!haveFrames) return;
+      const i = findIndex(t);
+      const a = frames[i];
+      const b = (i + 1 < frames.length) ? frames[i + 1] : a;
+      const dt = (b.t - a.t) || 1;
+      const u = Math.min(1, Math.max(0, (t - a.t) / dt));
+      for (let k = 0; k < N; k++) {
+        const pa = a.balls[k];
+        const pb = b.balls[k];
+        const x = pa[0] + (pb[0] - pa[0]) * u;
+        const y = pa[1] + (pb[1] - pa[1]) * u;
+        // Optional sprite rotation from ω_z (purely visual).
+        // pa[6] holds wz when present (rad/s); accumulate as we step time.
+        // TODO: integrate cumulative rotation if we want a spinning visual cue.
+        setPos(k, x, y, 0);
+      }
+    }
+
+    function loop(ts) {
+      if (lastTs == null) lastTs = ts;
+      const dt = (ts - lastTs) / 1000;
+      lastTs = ts;
+      if (playing) {
+        cursor += dt * speed;
+        if (cursor >= tMax) {
+          cursor = tMax;
+          setPlaying(false);
+        }
+        drawAt(cursor);
+        updateTimeLabel();
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // Render initial frame so we don't show 0/0 before first RAF.
+    if (haveFrames) drawAt(0);
+    updateTimeLabel();
+  })();
+  </script>
+</body>
+</html>

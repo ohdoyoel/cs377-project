@@ -1,0 +1,19 @@
+{
+  "n": 500,
+  "score_term": 0.0,
+  "score_term_std": 0.0,
+  "foul_term": 0.0,
+  "foul_term_std": 0.0,
+  "cushion_term": 1.6,
+  "cushion_term_std": 0.0,
+  "red_contact_term": 0.5999999999999999,
+  "red_contact_term_std": 1.1102230246251565e-16,
+  "opp_contact_term": 0.0,
+  "opp_contact_term_std": 0.0,
+  "position_term": 0.11680742822836909,
+  "position_term_std": 0.0,
+  "duration_term": -0.22658190673609868,
+  "duration_term_std": 8.326672684688674e-17,
+  "total": 2.0902255214922705,
+  "total_std": 0.0
+}

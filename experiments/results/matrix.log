@@ -1,0 +1,3 @@
+[run_matrix] 18 runs total. runs_dir=experiments/runs summary=experiments/results/summary.parquet
+[1/18] alpha=0.0 seed=0 starting (a0.0_s0)...
+[run_one] alpha=0.0 seed=0 total_steps=50000 out_dir=experiments/runs/a0.0_s0

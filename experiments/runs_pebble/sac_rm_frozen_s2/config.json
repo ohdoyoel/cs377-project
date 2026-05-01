@@ -1,0 +1,12 @@
+{
+  "config_kind": "sac_rm_frozen",
+  "seed": 2,
+  "total_steps": 30000,
+  "query_phase_steps": 5000,
+  "queries_per_phase": 50,
+  "eval_episodes": 500,
+  "t_max": 12.0,
+  "reward_mode": "rm_only",
+  "relabel_after_query": false,
+  "query_strategy": "uniform"
+}

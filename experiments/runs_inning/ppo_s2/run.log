@@ -1,0 +1,5 @@
+[run_inning] algo=ppo seed=2 total_steps=50000 max_shots=50 out_dir=experiments/runs_inning/ppo_s2
+[run_inning] train done in 151.9s
+[run_inning] saved policy -> experiments/runs_inning/ppo_s2/policy.zip
+[run_inning] eval n=200 done in 0.7s -> experiments/runs_inning/ppo_s2/eval.parquet
+[run_inning] DONE algo=ppo seed=2 mean_inning=0.000 max=0 p>=1=0.0% p>=3=0.0% p>=5=0.0% mean_shots=1.00 foul%=0.00 wall=153.2s

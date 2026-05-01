@@ -1,0 +1,19 @@
+{
+  "alpha": 0.7,
+  "seed": 2,
+  "total_steps": 50000,
+  "eval_episodes": 500,
+  "n_envs": 8,
+  "n_steps": 512,
+  "batch_size": 512,
+  "n_epochs": 4,
+  "learning_rate": 0.0003,
+  "gamma": 0.99,
+  "gae_lambda": 0.95,
+  "clip_range": 0.2,
+  "vf_coef": 0.5,
+  "ent_coef": 0.01,
+  "t_max": 12.0,
+  "model_path": "models/reward_model.pt",
+  "norm_path": "experiments/rm_normalization.json"
+}

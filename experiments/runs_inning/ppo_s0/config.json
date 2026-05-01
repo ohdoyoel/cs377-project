@@ -1,0 +1,17 @@
+{
+  "algo": "ppo",
+  "seed": 0,
+  "total_steps": 50000,
+  "max_shots": 50,
+  "eval_episodes": 200,
+  "t_max": 12.0,
+  "gamma": 0.99,
+  "learning_rate": 0.0003,
+  "n_steps": 512,
+  "batch_size": 512,
+  "n_epochs": 4,
+  "gae_lambda": 0.95,
+  "clip_range": 0.2,
+  "vf_coef": 0.5,
+  "ent_coef": 0.01
+}

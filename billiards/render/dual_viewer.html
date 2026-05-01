@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Billiards A/B preference viewer</title>
+<style>
+  :root {
+    --felt: #146d3f;
+    --felt-dark: #0e5530;
+    --cushion: #6b3a1f;
+    --cushion-light: #8a4f2d;
+    --accent-A: #4d8bff;
+    --accent-B: #ff8b4d;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #1c1c1c;
+    color: #ddd;
+    margin: 0;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .pair-meta {
+    color: #aaa;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stage {
+    display: flex;
+    flex-direction: row;
+    gap: 18px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 1100px;
+  }
+  .panel {
+    flex: 1 1 480px;
+    max-width: 520px;
+    min-width: 320px;
+    background: #232323;
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    box-sizing: border-box;
+  }
+  .panel.A { border-top: 4px solid var(--accent-A); }
+  .panel.B { border-top: 4px solid var(--accent-B); }
+  .panel h3 {
+    margin: 0 0 8px 0;
+    font-size: 15px;
+    letter-spacing: 0.05em;
+  }
+  .panel.A h3 { color: var(--accent-A); }
+  .panel.B h3 { color: var(--accent-B); }
+  .frame {
+    background: linear-gradient(180deg, var(--cushion-light), var(--cushion));
+    padding: 14px;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 0 0 2px rgba(0,0,0,0.25);
+    box-sizing: border-box;
+  }
+  .table {
+    position: relative;
+    background:
+      radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
+    box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.55);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .ball {
+    position: absolute;
+    left: 0;
+    top: 0;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .descriptors {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #c8c8c8;
+    background: #1a1a1a;
+    border-radius: 6px;
+    padding: 8px 10px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    white-space: pre-wrap;
+  }
+  .vote-row {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .vote-row button {
+    flex: 1 1 auto;
+    background: #3a3a3a;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .vote-row button:hover { background: #4a4a4a; }
+  .vote-row button.prefer { border-color: #888; font-weight: 600; }
+  .panel.A .vote-row button.prefer { border-color: var(--accent-A); }
+  .panel.B .vote-row button.prefer { border-color: var(--accent-B); }
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    background: #2a2a2a;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .controls button {
+    background: #3a3a3a;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 5px;
+    padding: 6px 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .controls button:hover { background: #4a4a4a; }
+  .controls input[type=range] { width: 140px; }
+  .controls .info { color: #aaa; font-variant-numeric: tabular-nums; min-width: 90px; }
+  .global-vote {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: #2a2a2a;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .global-vote button {
+    background: #3a3a3a;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 5px;
+    padding: 6px 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .global-vote button:hover { background: #555; }
+  .verdict {
+    color: #ccc;
+    font-size: 13px;
+    min-width: 200px;
+  }
+</style>
+</head>
+<body>
+  <div class="pair-meta" id="pair-meta">pair_id: {{PAIR_ID}}</div>
+
+  <div class="controls">
+    <button id="play">⏸ Pause</button>
+    <button id="restart">⟲ Restart</button>
+    <label>Speed
+      <input type="range" id="speed" min="0.25" max="4" step="0.25" value="1">
+      <span id="speed-label">1.00x</span>
+    </label>
+    <span class="info" id="time-label">t = 0.000s</span>
+  </div>
+
+  <div class="stage">
+    <div class="panel A">
+      <h3>Shot A</h3>
+      <div class="frame"><div class="table" id="table-A"></div></div>
+      <div class="descriptors" id="desc-A">{{DESC_A_TEXT}}</div>
+      <div class="vote-row">
+        <button data-pref="A" class="prefer">Prefer A</button>
+        <button data-pref="tie">Tie</button>
+        <button data-pref="skip">Skip</button>
+      </div>
+    </div>
+    <div class="panel B">
+      <h3>Shot B</h3>
+      <div class="frame"><div class="table" id="table-B"></div></div>
+      <div class="descriptors" id="desc-B">{{DESC_B_TEXT}}</div>
+      <div class="vote-row">
+        <button data-pref="B" class="prefer">Prefer B</button>
+        <button data-pref="tie">Tie</button>
+        <button data-pref="skip">Skip</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="global-vote">
+    <span>Verdict:</span>
+    <span class="verdict" id="verdict">(no vote yet)</span>
+  </div>
+
+  <script id="traj_A" type="application/json">{{TRAJ_A_JSON}}</script>
+  <script id="traj_B" type="application/json">{{TRAJ_B_JSON}}</script>
+  <script id="spec" type="application/json">{{SPEC_JSON}}</script>
+  <script id="pair_meta" type="application/json">{{PAIR_META_JSON}}</script>
+
+  <style id="sprites">
+    .ball-0 { background-image: url('{{SPRITE_WHITE_DATAURL}}'); }
+    .ball-1 { background-image: url('{{SPRITE_YELLOW_DATAURL}}'); }
+    .ball-2 { background-image: url('{{SPRITE_RED_DATAURL}}'); }
+    .ball-3 { background-image: url('{{SPRITE_RED_DATAURL}}'); }
+  </style>
+
+  <script>
+  (function () {
+    const trajA = JSON.parse(document.getElementById('traj_A').textContent);
+    const trajB = JSON.parse(document.getElementById('traj_B').textContent);
+    const spec  = JSON.parse(document.getElementById('spec').textContent);
+    const meta  = JSON.parse(document.getElementById('pair_meta').textContent);
+
+    // Per-panel pixel sizing: target ~480px wide each in default desktop layout.
+    const PANEL_TARGET_W = 480;
+    const FRAME_PADDING = 14 * 2;
+    const TABLE_PX_W = Math.max(320, PANEL_TARGET_W - FRAME_PADDING);
+    const pxPerM = TABLE_PX_W / spec.width_m;
+    const TABLE_PX_H = Math.round(spec.height_m * pxPerM);
+    const ballPx = Math.max(8, Math.round(spec.ball_radius_m * 2 * pxPerM));
+
+    function buildPanel(name, traj) {
+      const tableEl = document.getElementById('table-' + name);
+      tableEl.style.width  = TABLE_PX_W + 'px';
+      tableEl.style.height = TABLE_PX_H + 'px';
+
+      const N = (traj.frames && traj.frames.length > 0)
+        ? traj.frames[0].balls.length
+        : (spec.initial && spec.initial.length) || 4;
+
+      const balls = [];
+      for (let i = 0; i < N; i++) {
+        const el = document.createElement('div');
+        el.className = 'ball ball-' + i;
+        el.style.width  = ballPx + 'px';
+        el.style.height = ballPx + 'px';
+        tableEl.appendChild(el);
+        balls.push({el: el});
+      }
+      return {balls: balls, frames: traj.frames || [], N: N};
+    }
+
+    function setPos(panel, i, x_m, y_m) {
+      const px = x_m * pxPerM;
+      const py = y_m * pxPerM;
+      panel.balls[i].el.style.transform =
+        'translate3d(calc(' + px + 'px - 50%), calc(' + py + 'px - 50%), 0)';
+    }
+
+    const panelA = buildPanel('A', trajA);
+    const panelB = buildPanel('B', trajB);
+
+    function findIndex(frames, t) {
+      let lo = 0, hi = frames.length - 1;
+      if (t <= frames[0].t) return 0;
+      if (t >= frames[hi].t) return hi;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >>> 1;
+        if (frames[mid].t <= t) lo = mid; else hi = mid - 1;
+      }
+      return lo;
+    }
+
+    function drawPanelAt(panel, t) {
+      const frames = panel.frames;
+      if (!frames.length) return;
+      const i = findIndex(frames, t);
+      const a = frames[i];
+      const b = (i + 1 < frames.length) ? frames[i + 1] : a;
+      const dt = (b.t - a.t) || 1;
+      const u = Math.min(1, Math.max(0, (t - a.t) / dt));
+      for (let k = 0; k < panel.N; k++) {
+        const pa = a.balls[k];
+        const pb = b.balls[k];
+        const x = pa[0] + (pb[0] - pa[0]) * u;
+        const y = pa[1] + (pb[1] - pa[1]) * u;
+        setPos(panel, k, x, y);
+      }
+    }
+
+    // Initial layout: prefer first frame of each side.
+    if (panelA.frames.length) drawPanelAt(panelA, panelA.frames[0].t);
+    if (panelB.frames.length) drawPanelAt(panelB, panelB.frames[0].t);
+
+    const tMaxA = panelA.frames.length ? panelA.frames[panelA.frames.length - 1].t : 0;
+    const tMaxB = panelB.frames.length ? panelB.frames[panelB.frames.length - 1].t : 0;
+    const tMax = Math.max(tMaxA, tMaxB);
+    const haveFrames = tMax > 0;
+
+    let cursor = 0.0;
+    let speed = 1.0;
+    let playing = haveFrames;
+    let lastTs = null;
+
+    const playBtn = document.getElementById('play');
+    const restartBtn = document.getElementById('restart');
+    const speedEl = document.getElementById('speed');
+    const speedLabel = document.getElementById('speed-label');
+    const timeLabel = document.getElementById('time-label');
+    const verdictEl = document.getElementById('verdict');
+
+    function setPlaying(p) {
+      playing = p && haveFrames;
+      playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    }
+    setPlaying(haveFrames);
+
+    playBtn.addEventListener('click', () => setPlaying(!playing));
+    restartBtn.addEventListener('click', () => {
+      cursor = 0.0;
+      lastTs = null;
+      setPlaying(haveFrames);
+      drawPanelAt(panelA, 0);
+      drawPanelAt(panelB, 0);
+      timeLabel.textContent = 't = 0.000s';
+    });
+    speedEl.addEventListener('input', () => {
+      speed = parseFloat(speedEl.value);
+      speedLabel.textContent = speed.toFixed(2) + 'x';
+    });
+
+    function loop(ts) {
+      if (lastTs == null) lastTs = ts;
+      const dt = (ts - lastTs) / 1000;
+      lastTs = ts;
+      if (playing) {
+        cursor += dt * speed;
+        if (cursor >= tMax) {
+          cursor = tMax;
+          setPlaying(false);
+        }
+        // Each panel clamps internally at its own tMax.
+        const tA = Math.min(cursor, tMaxA);
+        const tB = Math.min(cursor, tMaxB);
+        drawPanelAt(panelA, tA);
+        drawPanelAt(panelB, tB);
+        timeLabel.textContent = 't = ' + cursor.toFixed(3) + 's';
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // ----- vote handling -----
+    function emitVote(preference) {
+      verdictEl.textContent = 'preference = ' + preference + ' (pair ' + meta.pair_id + ')';
+      try {
+        window.postMessage({preference: preference, pair_id: meta.pair_id}, '*');
+      } catch (e) { /* sandboxed contexts may block postMessage; the verdict label still updates. */ }
+    }
+    document.querySelectorAll('.vote-row button').forEach(btn => {
+      btn.addEventListener('click', () => emitVote(btn.dataset.pref));
+    });
+  })();
+  </script>
+</body>
+</html>

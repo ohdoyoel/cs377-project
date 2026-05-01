@@ -1,0 +1,4 @@
+[run_pebble] kind=pebble_disagree seed=1 total_steps=30000 out_dir=experiments/runs_pebble/pebble_disagree_s1
+[run_pebble] train done in 269.1s queries=300
+[run_pebble] eval n=500 done in 1.8s -> experiments/runs_pebble/pebble_disagree_s1/eval.parquet
+[run_pebble] DONE kind=pebble_disagree seed=1 true_score%=0.00 rm_mean=0.042 foul%=0.00 cush=3.00 wall=270.9s

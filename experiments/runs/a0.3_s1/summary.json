@@ -1,0 +1,30 @@
+{
+  "alpha": 0.3,
+  "seed": 1,
+  "train_wall_s": 41.73102304202621,
+  "eval_wall_s": 1.5154787090141326,
+  "wall_s": 45.38565429102164,
+  "true_score_rate": 0.0,
+  "rm_score_norm": 2.7590383396747997,
+  "foul_rate": 0.0,
+  "mean_cushions": 5.0,
+  "attribution": {
+    "n": 500,
+    "score_term": 0.0,
+    "score_term_std": 0.0,
+    "foul_term": 0.0,
+    "foul_term_std": 0.0,
+    "cushion_term": 2.0,
+    "cushion_term_std": 0.0,
+    "red_contact_term": 0.0,
+    "red_contact_term_std": 0.0,
+    "opp_contact_term": 0.0,
+    "opp_contact_term_std": 0.0,
+    "position_term": 0.23653369753511896,
+    "position_term_std": 2.7755575615628914e-17,
+    "duration_term": -0.2725024350361708,
+    "duration_term_std": 5.551115123125783e-17,
+    "total": 1.9640312624989487,
+    "total_std": 2.220446049250313e-16
+  }
+}

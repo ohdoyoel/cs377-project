@@ -1,0 +1,4 @@
+[run_pebble] kind=pebble_full seed=2 total_steps=30000 out_dir=experiments/runs_pebble/pebble_full_s2
+[run_pebble] train done in 254.8s queries=300
+[run_pebble] eval n=500 done in 1.6s -> experiments/runs_pebble/pebble_full_s2/eval.parquet
+[run_pebble] DONE kind=pebble_full seed=2 true_score%=0.00 rm_mean=0.116 foul%=0.00 cush=4.00 wall=256.4s

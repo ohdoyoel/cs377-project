@@ -1,0 +1,36 @@
+[project]
+name = "billiards-rlhf"
+version = "0.0.1"
+description = "Korean 4-ball carom billiards RL environment with RLHF"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+    "gymnasium>=0.29",
+    "jupyter>=1.0",
+    "ipykernel>=6.29",
+    "pandas",
+    "pyarrow",
+    "anthropic>=0.97.0",
+    "torch>=2.11.0",
+    "stable-baselines3>=2.8.0",
+    "tensorboard>=2.20.0",
+    "seaborn>=0.13.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["billiards"]

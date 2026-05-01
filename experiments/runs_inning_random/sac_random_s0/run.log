@@ -1,0 +1,6 @@
+[run_inning_random] algo=sac seed=0 train_env=random eval_envs=['canonical', 'random'] total_steps=50000 max_shots=50 out_dir=experiments/runs_inning_random/sac_random_s0
+[run_inning_random] train done in 411.6s
+[run_inning_random] saved policy -> experiments/runs_inning_random/sac_random_s0/policy.zip
+[run_inning_random] eval[canonical] n=200 mean_inning=0.000 max=0 p>=1=0.0% p>=3=0.0% mean_shots=1.00 foul%=0.00 wall=0.6s -> experiments/runs_inning_random/sac_random_s0/eval_canonical.parquet
+[run_inning_random] eval[random] n=200 mean_inning=0.025 max=1 p>=1=2.5% p>=3=0.0% mean_shots=1.02 foul%=19.50 wall=0.6s -> experiments/runs_inning_random/sac_random_s0/eval_random.parquet
+[run_inning_random] DONE algo=sac seed=0 train_env=random wall=413.5s

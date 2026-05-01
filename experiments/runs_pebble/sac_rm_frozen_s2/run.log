@@ -1,0 +1,4 @@
+[run_pebble] kind=sac_rm_frozen seed=2 total_steps=30000 out_dir=experiments/runs_pebble/sac_rm_frozen_s2
+[run_pebble] train done in 253.8s queries=300
+[run_pebble] eval n=500 done in 1.5s -> experiments/runs_pebble/sac_rm_frozen_s2/eval.parquet
+[run_pebble] DONE kind=sac_rm_frozen seed=2 true_score%=0.00 rm_mean=0.109 foul%=0.00 cush=4.00 wall=255.4s

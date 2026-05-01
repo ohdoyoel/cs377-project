@@ -1,0 +1,31 @@
+{
+  "algo": "sac",
+  "seed": 0,
+  "train_env": "random",
+  "train_wall_s": 411.55723737500375,
+  "eval_canonical": {
+    "n": 200,
+    "mean_inning_score": 0.0,
+    "max_inning_score": 0,
+    "p_score_ge1": 0.0,
+    "p_score_ge3": 0.0,
+    "p_score_ge5": 0.0,
+    "mean_shots": 1.0,
+    "foul_rate": 0.0,
+    "mean_cushions": 4.0,
+    "eval_wall_s": 0.6471096659952309
+  },
+  "eval_random": {
+    "n": 200,
+    "mean_inning_score": 0.025,
+    "max_inning_score": 1,
+    "p_score_ge1": 2.5,
+    "p_score_ge3": 0.0,
+    "p_score_ge5": 0.0,
+    "mean_shots": 1.025,
+    "foul_rate": 19.5,
+    "mean_cushions": 3.7375,
+    "eval_wall_s": 0.64286125000217
+  },
+  "wall_s": 413.4666357500246
+}
