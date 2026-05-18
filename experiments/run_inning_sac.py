@@ -111,6 +111,7 @@ def _make_train_env(
     seed: int,
     continue_on_miss: bool = False,
     ignore_opponent: bool = False,
+    constrain_aim: bool = False,
 ) -> Monitor:
     """Single-env wrapper: Monitor records ep_return / ep_length and
     forwards per-step ``cushion_hits`` / ``fouled`` so we can mean them
@@ -120,6 +121,7 @@ def _make_train_env(
         max_shots=max_shots,
         continue_on_miss=continue_on_miss,
         ignore_opponent=ignore_opponent,
+        constrain_aim=constrain_aim,
     )
     env = Monitor(env, info_keywords=("cushion_hits", "fouled", "score"))
     env.reset(seed=seed)
@@ -229,6 +231,7 @@ def _evaluate(
     max_shots: int,
     continue_on_miss: bool = False,
     ignore_opponent: bool = False,
+    constrain_aim: bool = False,
 ) -> pd.DataFrame:
     """Run ``n_episodes`` deterministic innings; one row per inning."""
     env = Billiards4BallInningEnv(
@@ -236,6 +239,7 @@ def _evaluate(
         max_shots=max_shots,
         continue_on_miss=continue_on_miss,
         ignore_opponent=ignore_opponent,
+        constrain_aim=constrain_aim,
     )
     rows: list[dict] = []
     for ep in range(n_episodes):
@@ -297,6 +301,12 @@ def main() -> None:
         default=None,
         help="Path to a policy .zip to warm-start from (stage 2 fine-tune).",
     )
+    parser.add_argument(
+        "--constrain_aim",
+        action="store_true",
+        help="Map theta into the ±arcsin(2r/d) window around the nearest red "
+             "so the cue ball geometrically must first-contact a red.",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -315,6 +325,7 @@ def main() -> None:
             "max_shots": int(args.max_shots),
             "continue_on_miss": bool(args.continue_on_miss),
             "ignore_opponent": bool(args.ignore_opponent),
+            "constrain_aim": bool(args.constrain_aim),
             "load_policy": args.load_policy,
             "eval_episodes": int(args.eval_episodes),
             "t_max": T_MAX,
@@ -351,6 +362,7 @@ def main() -> None:
               f"total_steps={args.total_steps} max_shots={args.max_shots} "
               f"continue_on_miss={args.continue_on_miss} "
               f"ignore_opponent={args.ignore_opponent} "
+              f"constrain_aim={args.constrain_aim} "
               f"load_policy={args.load_policy} "
               f"out_dir={out_dir}")
 
@@ -360,6 +372,7 @@ def main() -> None:
             seed=int(args.seed),
             continue_on_miss=bool(args.continue_on_miss),
             ignore_opponent=bool(args.ignore_opponent),
+            constrain_aim=bool(args.constrain_aim),
         )
 
         if args.algo == "sac":
@@ -440,6 +453,7 @@ def main() -> None:
                 max_shots=int(args.max_shots),
                 continue_on_miss=bool(args.continue_on_miss),
                 ignore_opponent=bool(args.ignore_opponent),
+                constrain_aim=bool(args.constrain_aim),
             )
             eval_wall = time.perf_counter() - t_eval0
             eval_path = out_dir / "eval.parquet"

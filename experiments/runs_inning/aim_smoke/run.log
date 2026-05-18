@@ -1,0 +1,5 @@
+[run_inning] algo=sac seed=0 total_steps=2048 max_shots=10 continue_on_miss=True ignore_opponent=False constrain_aim=True load_policy=None out_dir=experiments\runs_inning\aim_smoke
+[run_inning] train done in 11.0s
+[run_inning] saved policy -> experiments\runs_inning\aim_smoke\policy.zip
+[run_inning] eval n=10 done in 0.3s -> experiments\runs_inning\aim_smoke\eval.parquet
+[run_inning] DONE algo=sac seed=0 mean_inning=0.000 max=0 p>=1=0.0% p>=3=0.0% p>=5=0.0% mean_shots=10.00 foul%=0.00 wall=12.0s

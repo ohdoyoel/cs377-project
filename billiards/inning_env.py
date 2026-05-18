@@ -60,6 +60,8 @@ class Billiards4BallInningEnv(gym.Env):
         continue_on_miss: bool = False,
         foul_penalty: float = 0.1,
         ignore_opponent: bool = False,
+        constrain_aim: bool = False,
+        aim_alpha_cap_deg: float = 80.0,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
@@ -77,6 +79,12 @@ class Billiards4BallInningEnv(gym.Env):
         # observation space is unchanged), but score depends only on the cue
         # ball hitting both reds and ``fouled`` is forced False.
         self._ignore_opponent = bool(ignore_opponent)
+        # Geometric aim constraint: map agent's theta into the ±alpha window
+        # that geometrically guarantees first contact with the nearest red
+        # ball. alpha = arcsin(2r/d), capped at ``aim_alpha_cap_deg`` to keep
+        # the projection well-defined when d is close to 2r.
+        self._constrain_aim = bool(constrain_aim)
+        self._aim_alpha_cap = float(np.radians(aim_alpha_cap_deg))
 
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float32
@@ -103,6 +111,36 @@ class Billiards4BallInningEnv(gym.Env):
     def _obs(self) -> np.ndarray:
         assert self._state is not None
         return self._state.to_array().reshape(-1).astype(np.float32)
+
+    def _apply_aim_constraint(self, cue_action: CueAction) -> CueAction:
+        """Remap agent's theta into the angular tolerance that guarantees the
+        cue ball will first-contact the nearest red. theta is interpreted as
+        an offset in [-1, 1] (linearly from [0, 2π]) and scaled by alpha."""
+        assert self._state is not None
+        cue = self._state.balls[self._cue_id]
+        r = self._state.spec.ball_radius
+        red1 = self._state.balls[int(BallRole.RED_1)]
+        red2 = self._state.balls[int(BallRole.RED_2)]
+        d1 = float(np.hypot(red1.x - cue.x, red1.y - cue.y))
+        d2 = float(np.hypot(red2.x - cue.x, red2.y - cue.y))
+        if d1 <= d2:
+            nearest, d = red1, d1
+        else:
+            nearest, d = red2, d2
+        target_dir = float(np.arctan2(nearest.y - cue.y, nearest.x - cue.x))
+        if d <= 2.0 * r:
+            alpha = self._aim_alpha_cap
+        else:
+            sin_a = min(2.0 * r / d, float(np.sin(self._aim_alpha_cap)))
+            alpha = float(np.arcsin(sin_a))
+        offset = (cue_action.theta - np.pi) / np.pi  # [-1, 1]
+        theta_final = float((target_dir + offset * alpha) % (2.0 * np.pi))
+        return CueAction(
+            theta=theta_final,
+            power=cue_action.power,
+            a=cue_action.a,
+            b=cue_action.b,
+        )
 
     # ------------------------------------------------------------------ Gym API
 
@@ -136,6 +174,8 @@ class Billiards4BallInningEnv(gym.Env):
             raise RuntimeError("env.step called before env.reset")
 
         cue_action = _project_action(np.asarray(action, dtype=np.float64))
+        if self._constrain_aim:
+            cue_action = self._apply_aim_constraint(cue_action)
 
         # simulate_shot mutates state in place and resets per-shot t origin
         # via state.t (which is currently whatever we left it at). We snap
