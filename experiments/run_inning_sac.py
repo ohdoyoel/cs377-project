@@ -1,10 +1,13 @@
-"""Train + evaluate SAC or PPO on the multi-shot inning env.
+"""Train + evaluate SAC or TD3 on the multi-shot inning env.
 
 Reward per env step = score for that shot (0 or 1). The episode is a
 Korean-4-ball *inning*: cumulative reward across shots until the policy
 misses, fouls, or hits the per-inning cap. Compared to the single-shot
 ``Billiards4BallEnv`` used in Phase F/G, this exposes credit for
 *chaining* scoring shots in one possession.
+
+PPO is kept in commented-out form for reference (Phase II_b excludes it
+from training since SAC dominated 100% vs PPO 0% in the prior matrix).
 
 Outputs under ``{out_dir}/{run_id}/``:
     training_curve.csv  per-rollout aggregates (ep_return = inning score)
@@ -15,8 +18,12 @@ Outputs under ``{out_dir}/{run_id}/``:
 
 Usage:
     uv run python experiments/run_inning_sac.py \\
-        --algo sac --seed 0 --total_steps 100000 --eval_episodes 200 \\
+        --algo sac --seed 0 --total_steps 50000 --eval_episodes 200 \\
         --out_dir experiments/runs_inning/sac_s0
+
+    uv run python experiments/run_inning_sac.py \\
+        --algo td3 --seed 0 --total_steps 50000 --eval_episodes 200 \\
+        --out_dir experiments/runs_inning/td3_s0
 """
 
 from __future__ import annotations
@@ -37,7 +44,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from stable_baselines3 import PPO, SAC  # noqa: E402
+from stable_baselines3 import PPO, SAC, TD3  # noqa: E402
+from stable_baselines3.common.noise import NormalActionNoise  # noqa: E402
 from stable_baselines3.common.callbacks import BaseCallback  # noqa: E402
 from stable_baselines3.common.monitor import Monitor  # noqa: E402
 from stable_baselines3.common.utils import set_random_seed  # noqa: E402
@@ -55,14 +63,20 @@ SAC_BATCH = 256
 SAC_BUFFER = 200_000
 SAC_LEARNING_STARTS = 1_000
 
-# PPO
-PPO_N_STEPS = 512
-PPO_BATCH = 512
-PPO_N_EPOCHS = 4
-PPO_GAE = 0.95
-PPO_CLIP = 0.2
-PPO_VF = 0.5
-PPO_ENT = 0.01
+# TD3
+TD3_BATCH = 256
+TD3_BUFFER = 200_000
+TD3_LEARNING_STARTS = 1_000
+TD3_ACTION_NOISE_SIGMA = 0.1  # exploration noise stddev (action space scale)
+
+# PPO (excluded from training — kept for reference)
+# PPO_N_STEPS = 512
+# PPO_BATCH = 512
+# PPO_N_EPOCHS = 4
+# PPO_GAE = 0.95
+# PPO_CLIP = 0.2
+# PPO_VF = 0.5
+# PPO_ENT = 0.01
 
 
 # ---------------------------------------------------------------- IO helpers
@@ -241,7 +255,7 @@ def main() -> None:
     parser.add_argument("--total_steps", type=int, default=100_000)
     parser.add_argument("--max_shots", type=int, default=50)
     parser.add_argument("--eval_episodes", type=int, default=200)
-    parser.add_argument("--algo", type=str, choices=("sac", "ppo"), default="sac")
+    parser.add_argument("--algo", type=str, choices=("sac", "td3"), default="sac")
     parser.add_argument("--out_dir", type=str, default="experiments/runs_inning")
     args = parser.parse_args()
 
@@ -270,16 +284,23 @@ def main() -> None:
                 "buffer_size": SAC_BUFFER,
                 "learning_starts": SAC_LEARNING_STARTS,
             })
-        else:
+        elif args.algo == "td3":
             config.update({
-                "n_steps": PPO_N_STEPS,
-                "batch_size": PPO_BATCH,
-                "n_epochs": PPO_N_EPOCHS,
-                "gae_lambda": PPO_GAE,
-                "clip_range": PPO_CLIP,
-                "vf_coef": PPO_VF,
-                "ent_coef": PPO_ENT,
+                "batch_size": TD3_BATCH,
+                "buffer_size": TD3_BUFFER,
+                "learning_starts": TD3_LEARNING_STARTS,
+                "action_noise_sigma": TD3_ACTION_NOISE_SIGMA,
             })
+        # else:
+        #     config.update({
+        #         "n_steps": PPO_N_STEPS,
+        #         "batch_size": PPO_BATCH,
+        #         "n_epochs": PPO_N_EPOCHS,
+        #         "gae_lambda": PPO_GAE,
+        #         "clip_range": PPO_CLIP,
+        #         "vf_coef": PPO_VF,
+        #         "ent_coef": PPO_ENT,
+        #     })
         with (out_dir / "config.json").open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
@@ -303,23 +324,42 @@ def main() -> None:
                 verbose=0,
                 device="cpu",
             )
-        else:
-            model = PPO(
+        elif args.algo == "td3":
+            n_actions = env.action_space.shape[0]
+            action_noise = NormalActionNoise(
+                mean=np.zeros(n_actions, dtype=np.float32),
+                sigma=TD3_ACTION_NOISE_SIGMA * np.ones(n_actions, dtype=np.float32),
+            )
+            model = TD3(
                 policy="MlpPolicy",
                 env=env,
                 learning_rate=LR,
-                n_steps=PPO_N_STEPS,
-                batch_size=PPO_BATCH,
-                n_epochs=PPO_N_EPOCHS,
+                buffer_size=TD3_BUFFER,
+                batch_size=TD3_BATCH,
                 gamma=GAMMA,
-                gae_lambda=PPO_GAE,
-                clip_range=PPO_CLIP,
-                vf_coef=PPO_VF,
-                ent_coef=PPO_ENT,
+                learning_starts=TD3_LEARNING_STARTS,
+                action_noise=action_noise,
                 seed=int(args.seed),
                 verbose=0,
                 device="cpu",
             )
+        # else:
+        #     model = PPO(
+        #         policy="MlpPolicy",
+        #         env=env,
+        #         learning_rate=LR,
+        #         n_steps=PPO_N_STEPS,
+        #         batch_size=PPO_BATCH,
+        #         n_epochs=PPO_N_EPOCHS,
+        #         gamma=GAMMA,
+        #         gae_lambda=PPO_GAE,
+        #         clip_range=PPO_CLIP,
+        #         vf_coef=PPO_VF,
+        #         ent_coef=PPO_ENT,
+        #         seed=int(args.seed),
+        #         verbose=0,
+        #         device="cpu",
+        #     )
 
         try:
             cb = InningCurveCallback(out_dir / "training_curve.csv")

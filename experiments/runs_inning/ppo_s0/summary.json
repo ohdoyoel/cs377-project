@@ -1,9 +1,9 @@
 {
   "algo": "ppo",
   "seed": 0,
-  "train_wall_s": 153.96880025000428,
-  "eval_wall_s": 0.7432054999808315,
-  "wall_s": 155.33703129200148,
+  "train_wall_s": 147.78588209999725,
+  "eval_wall_s": 0.6577447999734432,
+  "wall_s": 149.16362380003557,
   "mean_inning_score": 0.0,
   "max_inning_score": 0,
   "p_score_ge1": 0.0,
@@ -11,5 +11,5 @@
   "p_score_ge5": 0.0,
   "mean_shots": 1.0,
   "foul_rate": 0.0,
-  "mean_cushions": 5.0
+  "mean_cushions": 2.0
 }

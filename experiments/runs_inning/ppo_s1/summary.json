@@ -1,15 +1,15 @@
 {
   "algo": "ppo",
   "seed": 1,
-  "train_wall_s": 158.2391362079943,
-  "eval_wall_s": 1.4748969579814002,
-  "wall_s": 160.33388583300984,
-  "mean_inning_score": 1.0,
-  "max_inning_score": 1,
-  "p_score_ge1": 100.0,
+  "train_wall_s": 144.5073983001057,
+  "eval_wall_s": 0.6494822998065501,
+  "wall_s": 145.88235519989394,
+  "mean_inning_score": 0.0,
+  "max_inning_score": 0,
+  "p_score_ge1": 0.0,
   "p_score_ge3": 0.0,
   "p_score_ge5": 0.0,
-  "mean_shots": 2.0,
+  "mean_shots": 1.0,
   "foul_rate": 0.0,
-  "mean_cushions": 5.0
+  "mean_cushions": 2.0
 }
