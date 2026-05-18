@@ -106,7 +106,12 @@ class _Tee(io.TextIOBase):
 # ---------------------------------------------------------------- env factory
 
 
-def _make_train_env(max_shots: int, seed: int, continue_on_miss: bool = False) -> Monitor:
+def _make_train_env(
+    max_shots: int,
+    seed: int,
+    continue_on_miss: bool = False,
+    ignore_opponent: bool = False,
+) -> Monitor:
     """Single-env wrapper: Monitor records ep_return / ep_length and
     forwards per-step ``cushion_hits`` / ``fouled`` so we can mean them
     over an inning."""
@@ -114,6 +119,7 @@ def _make_train_env(max_shots: int, seed: int, continue_on_miss: bool = False) -
         t_max=T_MAX,
         max_shots=max_shots,
         continue_on_miss=continue_on_miss,
+        ignore_opponent=ignore_opponent,
     )
     env = Monitor(env, info_keywords=("cushion_hits", "fouled", "score"))
     env.reset(seed=seed)
@@ -222,12 +228,14 @@ def _evaluate(
     seed_base: int,
     max_shots: int,
     continue_on_miss: bool = False,
+    ignore_opponent: bool = False,
 ) -> pd.DataFrame:
     """Run ``n_episodes`` deterministic innings; one row per inning."""
     env = Billiards4BallInningEnv(
         t_max=T_MAX,
         max_shots=max_shots,
         continue_on_miss=continue_on_miss,
+        ignore_opponent=ignore_opponent,
     )
     rows: list[dict] = []
     for ep in range(n_episodes):
@@ -277,6 +285,18 @@ def main() -> None:
         help="Keep shooting until max_shots regardless of miss/foul "
              "(exposes the policy to diverse mid-rack states).",
     )
+    parser.add_argument(
+        "--ignore_opponent",
+        action="store_true",
+        help="Curriculum stage 1: score only requires hitting both reds; "
+             "opponent ball contact is not a foul.",
+    )
+    parser.add_argument(
+        "--load_policy",
+        type=str,
+        default=None,
+        help="Path to a policy .zip to warm-start from (stage 2 fine-tune).",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -294,6 +314,8 @@ def main() -> None:
             "total_steps": int(args.total_steps),
             "max_shots": int(args.max_shots),
             "continue_on_miss": bool(args.continue_on_miss),
+            "ignore_opponent": bool(args.ignore_opponent),
+            "load_policy": args.load_policy,
             "eval_episodes": int(args.eval_episodes),
             "t_max": T_MAX,
             "gamma": GAMMA,
@@ -328,6 +350,8 @@ def main() -> None:
         print(f"[run_inning] algo={args.algo} seed={args.seed} "
               f"total_steps={args.total_steps} max_shots={args.max_shots} "
               f"continue_on_miss={args.continue_on_miss} "
+              f"ignore_opponent={args.ignore_opponent} "
+              f"load_policy={args.load_policy} "
               f"out_dir={out_dir}")
 
         set_random_seed(int(args.seed))
@@ -335,40 +359,49 @@ def main() -> None:
             max_shots=int(args.max_shots),
             seed=int(args.seed),
             continue_on_miss=bool(args.continue_on_miss),
+            ignore_opponent=bool(args.ignore_opponent),
         )
 
         if args.algo == "sac":
-            model = SAC(
-                policy="MlpPolicy",
-                env=env,
-                learning_rate=LR,
-                buffer_size=SAC_BUFFER,
-                batch_size=SAC_BATCH,
-                gamma=GAMMA,
-                learning_starts=SAC_LEARNING_STARTS,
-                seed=int(args.seed),
-                verbose=0,
-                device="cpu",
-            )
+            if args.load_policy:
+                model = SAC.load(args.load_policy, env=env, device="cpu")
+                print(f"[run_inning] loaded SAC policy <- {args.load_policy}")
+            else:
+                model = SAC(
+                    policy="MlpPolicy",
+                    env=env,
+                    learning_rate=LR,
+                    buffer_size=SAC_BUFFER,
+                    batch_size=SAC_BATCH,
+                    gamma=GAMMA,
+                    learning_starts=SAC_LEARNING_STARTS,
+                    seed=int(args.seed),
+                    verbose=0,
+                    device="cpu",
+                )
         elif args.algo == "td3":
-            n_actions = env.action_space.shape[0]
-            action_noise = NormalActionNoise(
-                mean=np.zeros(n_actions, dtype=np.float32),
-                sigma=TD3_ACTION_NOISE_SIGMA * np.ones(n_actions, dtype=np.float32),
-            )
-            model = TD3(
-                policy="MlpPolicy",
-                env=env,
-                learning_rate=LR,
-                buffer_size=TD3_BUFFER,
-                batch_size=TD3_BATCH,
-                gamma=GAMMA,
-                learning_starts=TD3_LEARNING_STARTS,
-                action_noise=action_noise,
-                seed=int(args.seed),
-                verbose=0,
-                device="cpu",
-            )
+            if args.load_policy:
+                model = TD3.load(args.load_policy, env=env, device="cpu")
+                print(f"[run_inning] loaded TD3 policy <- {args.load_policy}")
+            else:
+                n_actions = env.action_space.shape[0]
+                action_noise = NormalActionNoise(
+                    mean=np.zeros(n_actions, dtype=np.float32),
+                    sigma=TD3_ACTION_NOISE_SIGMA * np.ones(n_actions, dtype=np.float32),
+                )
+                model = TD3(
+                    policy="MlpPolicy",
+                    env=env,
+                    learning_rate=LR,
+                    buffer_size=TD3_BUFFER,
+                    batch_size=TD3_BATCH,
+                    gamma=GAMMA,
+                    learning_starts=TD3_LEARNING_STARTS,
+                    action_noise=action_noise,
+                    seed=int(args.seed),
+                    verbose=0,
+                    device="cpu",
+                )
         # else:
         #     model = PPO(
         #         policy="MlpPolicy",
@@ -406,6 +439,7 @@ def main() -> None:
                 seed_base=int(args.seed) + 10_000,
                 max_shots=int(args.max_shots),
                 continue_on_miss=bool(args.continue_on_miss),
+                ignore_opponent=bool(args.ignore_opponent),
             )
             eval_wall = time.perf_counter() - t_eval0
             eval_path = out_dir / "eval.parquet"

@@ -1,0 +1,16 @@
+{
+  "algo": "sac",
+  "seed": 0,
+  "total_steps": 50000,
+  "max_shots": 10,
+  "continue_on_miss": true,
+  "ignore_opponent": true,
+  "load_policy": null,
+  "eval_episodes": 200,
+  "t_max": 12.0,
+  "gamma": 0.99,
+  "learning_rate": 0.0003,
+  "batch_size": 256,
+  "buffer_size": 200000,
+  "learning_starts": 1000
+}

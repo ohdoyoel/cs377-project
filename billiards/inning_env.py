@@ -59,6 +59,7 @@ class Billiards4BallInningEnv(gym.Env):
         max_shots: int = 50,
         continue_on_miss: bool = False,
         foul_penalty: float = 0.1,
+        ignore_opponent: bool = False,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
@@ -71,6 +72,11 @@ class Billiards4BallInningEnv(gym.Env):
         # to a wide distribution of in-play states during training.
         self._continue_on_miss = bool(continue_on_miss)
         self._foul_penalty = float(foul_penalty)
+        # Curriculum stage 1: pretend the opponent ball doesn't exist for
+        # scoring/foul purposes. Physics still simulates all 4 balls (so the
+        # observation space is unchanged), but score depends only on the cue
+        # ball hitting both reds and ``fouled`` is forced False.
+        self._ignore_opponent = bool(ignore_opponent)
 
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float32
@@ -145,8 +151,18 @@ class Billiards4BallInningEnv(gym.Env):
         self._shot_offsets.append(offset)
         self._cumulative_t = offset + float(result["duration"])
 
-        score = int(result["score"])
-        fouled = bool(result["fouled"])
+        if self._ignore_opponent:
+            reds: set[int] = set()
+            for ev in result["events"]:
+                if ev["type"] == "cue_hit_red":
+                    i, j = ev["detail"]["balls"]
+                    red_idx = j if i == self._cue_id else i
+                    reds.add(red_idx)
+            score = 1 if len(reds) >= 2 else 0
+            fouled = False
+        else:
+            score = int(result["score"])
+            fouled = bool(result["fouled"])
         self._cumulative_score += score
         self._shot_index += 1
 
