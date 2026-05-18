@@ -49,6 +49,7 @@ from stable_baselines3.common.noise import NormalActionNoise  # noqa: E402
 from stable_baselines3.common.callbacks import BaseCallback  # noqa: E402
 from stable_baselines3.common.monitor import Monitor  # noqa: E402
 from stable_baselines3.common.utils import set_random_seed  # noqa: E402
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv  # noqa: E402
 
 from billiards.inning_env import Billiards4BallInningEnv  # noqa: E402
 
@@ -106,26 +107,57 @@ class _Tee(io.TextIOBase):
 # ---------------------------------------------------------------- env factory
 
 
+def _env_factory(
+    max_shots: int,
+    seed: int,
+    continue_on_miss: bool,
+    ignore_opponent: bool,
+    constrain_aim: bool,
+    extra_features: bool,
+):
+    """Build a thunk that constructs one Monitor-wrapped env. Used by both
+    DummyVecEnv (n_envs=1) and SubprocVecEnv (n_envs>1)."""
+    def _thunk():
+        env = Billiards4BallInningEnv(
+            t_max=T_MAX,
+            max_shots=max_shots,
+            continue_on_miss=continue_on_miss,
+            ignore_opponent=ignore_opponent,
+            constrain_aim=constrain_aim,
+            extra_features=extra_features,
+        )
+        env = Monitor(env, info_keywords=("cushion_hits", "fouled", "score"))
+        env.reset(seed=seed)
+        return env
+    return _thunk
+
+
 def _make_train_env(
     max_shots: int,
     seed: int,
     continue_on_miss: bool = False,
     ignore_opponent: bool = False,
     constrain_aim: bool = False,
-) -> Monitor:
-    """Single-env wrapper: Monitor records ep_return / ep_length and
-    forwards per-step ``cushion_hits`` / ``fouled`` so we can mean them
-    over an inning."""
-    env = Billiards4BallInningEnv(
-        t_max=T_MAX,
-        max_shots=max_shots,
-        continue_on_miss=continue_on_miss,
-        ignore_opponent=ignore_opponent,
-        constrain_aim=constrain_aim,
-    )
-    env = Monitor(env, info_keywords=("cushion_hits", "fouled", "score"))
-    env.reset(seed=seed)
-    return env
+    extra_features: bool = False,
+    n_envs: int = 1,
+):
+    """Vectorized training env. Uses SubprocVecEnv when n_envs>1 so multiple
+    physics simulations run on parallel CPU cores; falls back to DummyVecEnv
+    for n_envs=1 (single-process, no spawn overhead)."""
+    factories = [
+        _env_factory(
+            max_shots=max_shots,
+            seed=seed + i,
+            continue_on_miss=continue_on_miss,
+            ignore_opponent=ignore_opponent,
+            constrain_aim=constrain_aim,
+            extra_features=extra_features,
+        )
+        for i in range(n_envs)
+    ]
+    if n_envs <= 1:
+        return DummyVecEnv(factories)
+    return SubprocVecEnv(factories)
 
 
 # ---------------------------------------------------------------- callbacks
@@ -232,6 +264,7 @@ def _evaluate(
     continue_on_miss: bool = False,
     ignore_opponent: bool = False,
     constrain_aim: bool = False,
+    extra_features: bool = False,
 ) -> pd.DataFrame:
     """Run ``n_episodes`` deterministic innings; one row per inning."""
     env = Billiards4BallInningEnv(
@@ -240,6 +273,7 @@ def _evaluate(
         continue_on_miss=continue_on_miss,
         ignore_opponent=ignore_opponent,
         constrain_aim=constrain_aim,
+        extra_features=extra_features,
     )
     rows: list[dict] = []
     for ep in range(n_episodes):
@@ -307,6 +341,19 @@ def main() -> None:
         help="Map theta into the ±arcsin(2r/d) window around the nearest red "
              "so the cue ball geometrically must first-contact a red.",
     )
+    parser.add_argument(
+        "--extra_features",
+        action="store_true",
+        help="Augment obs with d(cue,red1), d(cue,red2), and the polar "
+             "angle (sin,cos) of the other red as seen from the nearest red.",
+    )
+    parser.add_argument(
+        "--n_envs",
+        type=int,
+        default=1,
+        help="Number of parallel envs (SubprocVecEnv) for training. "
+             "Eval always runs single-env.",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -326,6 +373,8 @@ def main() -> None:
             "continue_on_miss": bool(args.continue_on_miss),
             "ignore_opponent": bool(args.ignore_opponent),
             "constrain_aim": bool(args.constrain_aim),
+            "extra_features": bool(args.extra_features),
+            "n_envs": int(args.n_envs),
             "load_policy": args.load_policy,
             "eval_episodes": int(args.eval_episodes),
             "t_max": T_MAX,
@@ -363,6 +412,8 @@ def main() -> None:
               f"continue_on_miss={args.continue_on_miss} "
               f"ignore_opponent={args.ignore_opponent} "
               f"constrain_aim={args.constrain_aim} "
+              f"extra_features={args.extra_features} "
+              f"n_envs={args.n_envs} "
               f"load_policy={args.load_policy} "
               f"out_dir={out_dir}")
 
@@ -373,6 +424,8 @@ def main() -> None:
             continue_on_miss=bool(args.continue_on_miss),
             ignore_opponent=bool(args.ignore_opponent),
             constrain_aim=bool(args.constrain_aim),
+            extra_features=bool(args.extra_features),
+            n_envs=int(args.n_envs),
         )
 
         if args.algo == "sac":
@@ -454,6 +507,7 @@ def main() -> None:
                 continue_on_miss=bool(args.continue_on_miss),
                 ignore_opponent=bool(args.ignore_opponent),
                 constrain_aim=bool(args.constrain_aim),
+                extra_features=bool(args.extra_features),
             )
             eval_wall = time.perf_counter() - t_eval0
             eval_path = out_dir / "eval.parquet"

@@ -26,6 +26,7 @@ from .physics import (
 )
 
 OBS_DIM = 4 * 7  # 28
+EXTRA_FEATURE_DIM = 4  # d_red1, d_red2, sin(phi), cos(phi)
 
 
 def _spec_to_dict(spec: TableSpec) -> dict[str, float]:
@@ -62,6 +63,7 @@ class Billiards4BallInningEnv(gym.Env):
         ignore_opponent: bool = False,
         constrain_aim: bool = False,
         aim_alpha_cap_deg: float = 80.0,
+        extra_features: bool = False,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
@@ -85,9 +87,15 @@ class Billiards4BallInningEnv(gym.Env):
         # the projection well-defined when d is close to 2r.
         self._constrain_aim = bool(constrain_aim)
         self._aim_alpha_cap = float(np.radians(aim_alpha_cap_deg))
+        # Augment obs with hand-crafted geometric features about the two reds:
+        # distance to each red, plus the polar angle of the *other* red as
+        # seen from the nearest red with cue→nearest as the polar axis. The
+        # polar angle is split into (sin, cos) to avoid the 2π wrap.
+        self._extra_features = bool(extra_features)
+        obs_dim = OBS_DIM + (EXTRA_FEATURE_DIM if self._extra_features else 0)
 
         self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
         self.action_space = gym.spaces.Box(
             low=np.array([0.0, 0.0, -1.0, -1.0], dtype=np.float32),
@@ -110,7 +118,26 @@ class Billiards4BallInningEnv(gym.Env):
 
     def _obs(self) -> np.ndarray:
         assert self._state is not None
-        return self._state.to_array().reshape(-1).astype(np.float32)
+        base = self._state.to_array().reshape(-1).astype(np.float32)
+        if not self._extra_features:
+            return base
+        cue = self._state.balls[self._cue_id]
+        red1 = self._state.balls[int(BallRole.RED_1)]
+        red2 = self._state.balls[int(BallRole.RED_2)]
+        d1 = float(np.hypot(red1.x - cue.x, red1.y - cue.y))
+        d2 = float(np.hypot(red2.x - cue.x, red2.y - cue.y))
+        if d1 <= d2:
+            nearest, other = red1, red2
+        else:
+            nearest, other = red2, red1
+        axis = float(np.arctan2(cue.y - nearest.y, cue.x - nearest.x))
+        other_dir = float(np.arctan2(other.y - nearest.y, other.x - nearest.x))
+        phi = other_dir - axis
+        extras = np.array(
+            [d1, d2, float(np.sin(phi)), float(np.cos(phi))],
+            dtype=np.float32,
+        )
+        return np.concatenate([base, extras], axis=0)
 
     def _apply_aim_constraint(self, cue_action: CueAction) -> CueAction:
         """Remap agent's theta into the angular tolerance that guarantees the
