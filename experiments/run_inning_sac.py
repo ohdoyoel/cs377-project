@@ -106,11 +106,15 @@ class _Tee(io.TextIOBase):
 # ---------------------------------------------------------------- env factory
 
 
-def _make_train_env(max_shots: int, seed: int) -> Monitor:
+def _make_train_env(max_shots: int, seed: int, continue_on_miss: bool = False) -> Monitor:
     """Single-env wrapper: Monitor records ep_return / ep_length and
     forwards per-step ``cushion_hits`` / ``fouled`` so we can mean them
     over an inning."""
-    env = Billiards4BallInningEnv(t_max=T_MAX, max_shots=max_shots)
+    env = Billiards4BallInningEnv(
+        t_max=T_MAX,
+        max_shots=max_shots,
+        continue_on_miss=continue_on_miss,
+    )
     env = Monitor(env, info_keywords=("cushion_hits", "fouled", "score"))
     env.reset(seed=seed)
     return env
@@ -212,9 +216,19 @@ class InningCurveCallback(BaseCallback):
 # ---------------------------------------------------------------- evaluation
 
 
-def _evaluate(model, n_episodes: int, seed_base: int, max_shots: int) -> pd.DataFrame:
+def _evaluate(
+    model,
+    n_episodes: int,
+    seed_base: int,
+    max_shots: int,
+    continue_on_miss: bool = False,
+) -> pd.DataFrame:
     """Run ``n_episodes`` deterministic innings; one row per inning."""
-    env = Billiards4BallInningEnv(t_max=T_MAX, max_shots=max_shots)
+    env = Billiards4BallInningEnv(
+        t_max=T_MAX,
+        max_shots=max_shots,
+        continue_on_miss=continue_on_miss,
+    )
     rows: list[dict] = []
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=seed_base + ep)
@@ -257,6 +271,12 @@ def main() -> None:
     parser.add_argument("--eval_episodes", type=int, default=200)
     parser.add_argument("--algo", type=str, choices=("sac", "td3"), default="sac")
     parser.add_argument("--out_dir", type=str, default="experiments/runs_inning")
+    parser.add_argument(
+        "--continue_on_miss",
+        action="store_true",
+        help="Keep shooting until max_shots regardless of miss/foul "
+             "(exposes the policy to diverse mid-rack states).",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -273,6 +293,7 @@ def main() -> None:
             "seed": int(args.seed),
             "total_steps": int(args.total_steps),
             "max_shots": int(args.max_shots),
+            "continue_on_miss": bool(args.continue_on_miss),
             "eval_episodes": int(args.eval_episodes),
             "t_max": T_MAX,
             "gamma": GAMMA,
@@ -306,10 +327,15 @@ def main() -> None:
 
         print(f"[run_inning] algo={args.algo} seed={args.seed} "
               f"total_steps={args.total_steps} max_shots={args.max_shots} "
+              f"continue_on_miss={args.continue_on_miss} "
               f"out_dir={out_dir}")
 
         set_random_seed(int(args.seed))
-        env = _make_train_env(max_shots=int(args.max_shots), seed=int(args.seed))
+        env = _make_train_env(
+            max_shots=int(args.max_shots),
+            seed=int(args.seed),
+            continue_on_miss=bool(args.continue_on_miss),
+        )
 
         if args.algo == "sac":
             model = SAC(
@@ -379,6 +405,7 @@ def main() -> None:
                 n_episodes=int(args.eval_episodes),
                 seed_base=int(args.seed) + 10_000,
                 max_shots=int(args.max_shots),
+                continue_on_miss=bool(args.continue_on_miss),
             )
             eval_wall = time.perf_counter() - t_eval0
             eval_path = out_dir / "eval.parquet"

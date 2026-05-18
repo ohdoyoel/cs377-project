@@ -1,0 +1,2 @@
+timesteps,ep_return_mean,ep_length_mean,ep_cushion_mean,ep_foul_rate,n_episodes_in_window
+2048,0.0490,10.0000,1.9309,0.6127,204

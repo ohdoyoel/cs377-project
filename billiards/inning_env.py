@@ -57,12 +57,20 @@ class Billiards4BallInningEnv(gym.Env):
         cue_id: int = int(BallRole.CUE_WHITE),
         t_max: float = 12.0,
         max_shots: int = 50,
+        continue_on_miss: bool = False,
+        foul_penalty: float = 0.1,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
         self._cue_id = cue_id
         self._t_max = t_max
         self._max_shots = int(max_shots)
+        # When True, the episode never terminates on miss/foul; the policy
+        # keeps shooting from whatever ball configuration the previous shot
+        # produced until ``max_shots`` is reached. Used to expose the policy
+        # to a wide distribution of in-play states during training.
+        self._continue_on_miss = bool(continue_on_miss)
+        self._foul_penalty = float(foul_penalty)
 
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float32
@@ -154,9 +162,24 @@ class Billiards4BallInningEnv(gym.Env):
         }
         self._inning_log_records.append(record)
 
-        terminated = (score == 0) or fouled
-        truncated = (self._shot_index >= self._max_shots) and not terminated
-        reward = float(score)
+        if self._continue_on_miss:
+            terminated = False
+            truncated = self._shot_index >= self._max_shots
+            reward = float(score) - (self._foul_penalty if fouled else 0.0)
+            # simulate_shot only zero-clamps balls that ended at rest. When
+            # t_max truncates a still-rolling shot the cue ball keeps a
+            # residual velocity and the next apply_cue() raises. In
+            # continue_on_miss mode we force the table to a halt between
+            # shots so the next shot is always well-defined.
+            if not truncated:
+                for b in self._state.balls:
+                    b.vx = b.vy = 0.0
+                    b.wx = b.wy = 0.0
+                    b.wz = 0.0
+        else:
+            terminated = (score == 0) or fouled
+            truncated = (self._shot_index >= self._max_shots) and not terminated
+            reward = float(score)
 
         info: dict[str, Any] = {
             "event_log": result["events"],
