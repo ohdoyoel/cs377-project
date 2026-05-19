@@ -52,6 +52,7 @@ from stable_baselines3.common.utils import set_random_seed  # noqa: E402
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv  # noqa: E402
 
 from billiards.inning_env import Billiards4BallInningEnv  # noqa: E402
+from billiards.wrappers.random_start_env import RandomStartInningEnv  # noqa: E402
 
 
 # ---- shared hyperparameters ----------------------------------------------
@@ -114,6 +115,7 @@ def _env_factory(
     ignore_opponent: bool,
     constrain_aim: bool,
     extra_features: bool,
+    random_start: bool,
 ):
     """Build a thunk that constructs one Monitor-wrapped env. Used by both
     DummyVecEnv (n_envs=1) and SubprocVecEnv (n_envs>1)."""
@@ -126,6 +128,8 @@ def _env_factory(
             constrain_aim=constrain_aim,
             extra_features=extra_features,
         )
+        if random_start:
+            env = RandomStartInningEnv(env)
         env = Monitor(env, info_keywords=("cushion_hits", "fouled", "score"))
         env.reset(seed=seed)
         return env
@@ -139,6 +143,7 @@ def _make_train_env(
     ignore_opponent: bool = False,
     constrain_aim: bool = False,
     extra_features: bool = False,
+    random_start: bool = False,
     n_envs: int = 1,
 ):
     """Vectorized training env. Uses SubprocVecEnv when n_envs>1 so multiple
@@ -152,6 +157,7 @@ def _make_train_env(
             ignore_opponent=ignore_opponent,
             constrain_aim=constrain_aim,
             extra_features=extra_features,
+            random_start=random_start,
         )
         for i in range(n_envs)
     ]
@@ -265,9 +271,10 @@ def _evaluate(
     ignore_opponent: bool = False,
     constrain_aim: bool = False,
     extra_features: bool = False,
+    random_start: bool = False,
 ) -> pd.DataFrame:
     """Run ``n_episodes`` deterministic innings; one row per inning."""
-    env = Billiards4BallInningEnv(
+    base = Billiards4BallInningEnv(
         t_max=T_MAX,
         max_shots=max_shots,
         continue_on_miss=continue_on_miss,
@@ -275,6 +282,7 @@ def _evaluate(
         constrain_aim=constrain_aim,
         extra_features=extra_features,
     )
+    env = RandomStartInningEnv(base) if random_start else base
     rows: list[dict] = []
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=seed_base + ep)
@@ -293,10 +301,11 @@ def _evaluate(
                 fouled = True
             if terminated or truncated:
                 break
+        inner = env.unwrapped if random_start else env
         rows.append({
             "ep_idx": int(ep),
             "seed": int(seed_base + ep),
-            "inning_score": int(env.cumulative_score),
+            "inning_score": int(inner.cumulative_score),
             "n_shots": int(n_shots),
             "mean_cushions": float(cushions / max(1, n_shots)),
             "fouled": bool(fouled),
@@ -348,6 +357,11 @@ def main() -> None:
              "angle (sin,cos) of the other red as seen from the nearest red.",
     )
     parser.add_argument(
+        "--random_start",
+        action="store_true",
+        help="Randomize ball positions on each reset via RandomStartInningEnv.",
+    )
+    parser.add_argument(
         "--n_envs",
         type=int,
         default=1,
@@ -374,6 +388,7 @@ def main() -> None:
             "ignore_opponent": bool(args.ignore_opponent),
             "constrain_aim": bool(args.constrain_aim),
             "extra_features": bool(args.extra_features),
+            "random_start": bool(args.random_start),
             "n_envs": int(args.n_envs),
             "load_policy": args.load_policy,
             "eval_episodes": int(args.eval_episodes),
@@ -413,6 +428,7 @@ def main() -> None:
               f"ignore_opponent={args.ignore_opponent} "
               f"constrain_aim={args.constrain_aim} "
               f"extra_features={args.extra_features} "
+              f"random_start={args.random_start} "
               f"n_envs={args.n_envs} "
               f"load_policy={args.load_policy} "
               f"out_dir={out_dir}")
@@ -425,6 +441,7 @@ def main() -> None:
             ignore_opponent=bool(args.ignore_opponent),
             constrain_aim=bool(args.constrain_aim),
             extra_features=bool(args.extra_features),
+            random_start=bool(args.random_start),
             n_envs=int(args.n_envs),
         )
 
@@ -508,6 +525,7 @@ def main() -> None:
                 ignore_opponent=bool(args.ignore_opponent),
                 constrain_aim=bool(args.constrain_aim),
                 extra_features=bool(args.extra_features),
+                random_start=bool(args.random_start),
             )
             eval_wall = time.perf_counter() - t_eval0
             eval_path = out_dir / "eval.parquet"

@@ -1,0 +1,15 @@
+{
+  "algo": "sac",
+  "seed": 0,
+  "train_wall_s": 504.73207140003797,
+  "eval_wall_s": 6.4170701000257395,
+  "wall_s": 512.3989292000188,
+  "mean_inning_score": 4.0,
+  "max_inning_score": 4,
+  "p_score_ge1": 100.0,
+  "p_score_ge3": 100.0,
+  "p_score_ge5": 0.0,
+  "mean_shots": 10.0,
+  "foul_rate": 0.0,
+  "mean_cushions": 2.3999999999999995
+}

@@ -1,0 +1,1 @@
+[run_inning] algo=sac seed=0 total_steps=200000 max_shots=10 continue_on_miss=True ignore_opponent=False constrain_aim=True extra_features=True n_envs=4 load_policy=None out_dir=experiments\runs_inning\sac_200k_s0
