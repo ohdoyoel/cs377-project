@@ -123,6 +123,7 @@ def _env_factory(
     continue_on_miss: bool,
     ignore_opponent: bool,
     constrain_aim: bool,
+    wide_aim: bool,
     extra_features: bool,
     random_start: bool,
     foul_penalty: float,
@@ -137,6 +138,7 @@ def _env_factory(
             continue_on_miss=continue_on_miss,
             ignore_opponent=ignore_opponent,
             constrain_aim=constrain_aim,
+            wide_aim=wide_aim,
             extra_features=extra_features,
             foul_penalty=foul_penalty,
             gentle_shot=gentle_shot,
@@ -155,6 +157,7 @@ def _make_train_env(
     continue_on_miss: bool = False,
     ignore_opponent: bool = False,
     constrain_aim: bool = False,
+    wide_aim: bool = False,
     extra_features: bool = False,
     random_start: bool = False,
     foul_penalty: float = 0.1,
@@ -171,6 +174,7 @@ def _make_train_env(
             continue_on_miss=continue_on_miss,
             ignore_opponent=ignore_opponent,
             constrain_aim=constrain_aim,
+            wide_aim=wide_aim,
             extra_features=extra_features,
             random_start=random_start,
             foul_penalty=foul_penalty,
@@ -287,6 +291,7 @@ def _evaluate(
     continue_on_miss: bool = False,
     ignore_opponent: bool = False,
     constrain_aim: bool = False,
+    wide_aim: bool = False,
     extra_features: bool = False,
     random_start: bool = False,
 ) -> pd.DataFrame:
@@ -297,6 +302,7 @@ def _evaluate(
         continue_on_miss=continue_on_miss,
         ignore_opponent=ignore_opponent,
         constrain_aim=constrain_aim,
+        wide_aim=wide_aim,
         extra_features=extra_features,
     )
     env = RandomStartInningEnv(base) if random_start else base
@@ -368,6 +374,13 @@ def main() -> None:
              "so the cue ball geometrically must first-contact a red.",
     )
     parser.add_argument(
+        "--wide_aim",
+        action="store_true",
+        help="Extend aim constraint to cover both red balls: theta spans the "
+             "union of both balls' contact windows, letting the agent choose "
+             "which ball to target first. Mutually exclusive with constrain_aim.",
+    )
+    parser.add_argument(
         "--extra_features",
         action="store_true",
         help="Augment obs with d(cue,red1), d(cue,red2), and the polar "
@@ -416,6 +429,7 @@ def main() -> None:
             "continue_on_miss": bool(args.continue_on_miss),
             "ignore_opponent": bool(args.ignore_opponent),
             "constrain_aim": bool(args.constrain_aim),
+            "wide_aim": bool(args.wide_aim),
             "extra_features": bool(args.extra_features),
             "random_start": bool(args.random_start),
             "foul_penalty": float(args.foul_penalty),
@@ -458,6 +472,7 @@ def main() -> None:
               f"continue_on_miss={args.continue_on_miss} "
               f"ignore_opponent={args.ignore_opponent} "
               f"constrain_aim={args.constrain_aim} "
+              f"wide_aim={args.wide_aim} "
               f"extra_features={args.extra_features} "
               f"random_start={args.random_start} "
               f"foul_penalty={args.foul_penalty} "
@@ -473,6 +488,7 @@ def main() -> None:
             continue_on_miss=bool(args.continue_on_miss),
             ignore_opponent=bool(args.ignore_opponent),
             constrain_aim=bool(args.constrain_aim),
+            wide_aim=bool(args.wide_aim),
             extra_features=bool(args.extra_features),
             random_start=bool(args.random_start),
             foul_penalty=float(args.foul_penalty),
@@ -559,6 +575,7 @@ def main() -> None:
                 continue_on_miss=bool(args.continue_on_miss),
                 ignore_opponent=bool(args.ignore_opponent),
                 constrain_aim=bool(args.constrain_aim),
+                wide_aim=bool(args.wide_aim),
                 extra_features=bool(args.extra_features),
                 random_start=bool(args.random_start),
             )

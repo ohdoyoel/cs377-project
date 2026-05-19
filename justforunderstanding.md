@@ -108,7 +108,8 @@
 
 | 플래그 | 타입 | 기본값 | 설명 |
 |---|---|---|---|
-| `--constrain_aim` | flag | False | 에이전트의 theta를 가장 가까운 목적구 방향 ±arcsin(2r/d) 범위로 제한. 첫 접촉 보장 |
+| `--constrain_aim` | flag | False | 에이전트의 theta를 **가장 가까운 목적구** 방향 ±arcsin(2r/d) 범위로 제한. 첫 접촉 보장 |
+| `--wide_aim` | flag | False | theta를 **두 목적구 모두** 커버하는 window로 확장: `[min(dir1-α1, dir2-α2), max(dir1+α1, dir2+α2)]`. 어느 공을 먼저 칠지 agent가 선택 가능. `constrain_aim`과 동시 사용 불가 |
 | `--extra_features` | flag | False | obs 28→32-dim 확장: d_red1, d_red2, sin(φ), cos(φ) 추가 (두 목적구의 기하 정보) |
 
 ### 보상 설계
@@ -150,6 +151,23 @@ python -m experiments.run_inning_sac \
 | sac_gentle_200k_s1 | 0.765 | 47.0% | 8.5% | - | 15.5% | seed 운 좋음 |
 | **sac_cosine_500k_s0** | **1.080** | **48.5%** | **17.0%** | **4.0%** | 20.5% | **현재 최고** |
 | sac_cosine_500k_s1 | 0.840 | 42.0% | 10.0% | 2.0% | 14.5% | cosine LR + 500k |
+| sac_wideaim_500k_s0 | 0.155 | 14.0% | 0.0% | 0.0% | 14.5% | wide aim 실패 |
+| sac_wideaim_500k_s1 | 0.155 | 13.5% | 0.0% | 0.0% | 11.5% | wide aim 실패 |
+| sac_wideaim_500k_s2 | 0.155 | 15.0% | 0.0% | 0.0% | 11.5% | wide aim 실패 |
+
+---
+
+## ❌ 실패한 실험: wide aim
+
+`_apply_aim_constraint`를 nearest ball 하나에서 두 목적구의 angular window 합집합으로 확장.
+
+**결과**: random mean 1.080 → 0.155 (대폭 하락), seed 분산도 거의 없음 (셋 다 0.155).
+
+**원인**: 기존 constraint의 핵심 가치는 "어느 공을 먼저 칠지" 결정을 제거하는 inductive bias였음.
+window를 넓히면 agent가 "공 선택 + 득점 방법"을 동시에 학습해야 해서 500k step으로는 부족.
+
+**교훈**: 더 먼 공을 겨냥하게 하려면 window 확대보다 커리큘럼이 유효.
+(cosine_500k로 기초 학습 → `--load_policy`로 이어받아 wide aim fine-tune)
 
 ---
 

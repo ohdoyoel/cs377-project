@@ -62,6 +62,7 @@ class Billiards4BallInningEnv(gym.Env):
         foul_penalty: float = 0.1,
         ignore_opponent: bool = False,
         constrain_aim: bool = False,
+        wide_aim: bool = False,
         aim_alpha_cap_deg: float = 80.0,
         extra_features: bool = False,
         gentle_shot: bool = False,
@@ -90,6 +91,7 @@ class Billiards4BallInningEnv(gym.Env):
         # ball. alpha = arcsin(2r/d), capped at ``aim_alpha_cap_deg`` to keep
         # the projection well-defined when d is close to 2r.
         self._constrain_aim = bool(constrain_aim)
+        self._wide_aim = bool(wide_aim)
         self._aim_alpha_cap = float(np.radians(aim_alpha_cap_deg))
         # Augment obs with hand-crafted geometric features about the two reds:
         # distance to each red, plus the polar angle of the *other* red as
@@ -151,9 +153,15 @@ class Billiards4BallInningEnv(gym.Env):
         return np.concatenate([base, extras], axis=0)
 
     def _apply_aim_constraint(self, cue_action: CueAction) -> CueAction:
-        """Remap agent's theta into the angular tolerance that guarantees the
-        cue ball will first-contact the nearest red. theta is interpreted as
-        an offset in [-1, 1] (linearly from [0, 2π]) and scaled by alpha."""
+        """Remap agent's theta into an aim window around the red ball(s).
+
+        Default (wide_aim=False): window = ±arcsin(2r/d) around the nearest
+        red, guaranteeing first contact with that ball.
+
+        Wide mode (wide_aim=True): window spans the union of both balls'
+        contact windows [min(dir1-α1, dir2-α2), max(dir1+α1, dir2+α2)],
+        letting the agent choose which ball to target first.
+        """
         assert self._state is not None
         cue = self._state.balls[self._cue_id]
         r = self._state.spec.ball_radius
@@ -161,18 +169,32 @@ class Billiards4BallInningEnv(gym.Env):
         red2 = self._state.balls[int(BallRole.RED_2)]
         d1 = float(np.hypot(red1.x - cue.x, red1.y - cue.y))
         d2 = float(np.hypot(red2.x - cue.x, red2.y - cue.y))
-        if d1 <= d2:
-            nearest, d = red1, d1
-        else:
-            nearest, d = red2, d2
-        target_dir = float(np.arctan2(nearest.y - cue.y, nearest.x - cue.x))
-        if d <= 2.0 * r:
-            alpha = self._aim_alpha_cap
-        else:
-            sin_a = min(2.0 * r / d, float(np.sin(self._aim_alpha_cap)))
-            alpha = float(np.arcsin(sin_a))
+
+        def _alpha(d: float) -> float:
+            if d <= 2.0 * r:
+                return self._aim_alpha_cap
+            return float(np.arcsin(min(2.0 * r / d, float(np.sin(self._aim_alpha_cap)))))
+
         offset = (cue_action.theta - np.pi) / np.pi  # [-1, 1]
-        theta_final = float((target_dir + offset * alpha) % (2.0 * np.pi))
+
+        if self._wide_aim:
+            dir1 = float(np.arctan2(red1.y - cue.y, red1.x - cue.x))
+            dir2 = float(np.arctan2(red2.y - cue.y, red2.x - cue.x))
+            # Normalize dir2 into [-π, π] relative to dir1 to handle wrap.
+            dir2 = dir1 + float((dir2 - dir1 + np.pi) % (2.0 * np.pi) - np.pi)
+            lo = min(dir1 - _alpha(d1), dir2 - _alpha(d2))
+            hi = max(dir1 + _alpha(d1), dir2 + _alpha(d2))
+            center = (lo + hi) * 0.5
+            half_span = (hi - lo) * 0.5
+        else:
+            if d1 <= d2:
+                nearest, d = red1, d1
+            else:
+                nearest, d = red2, d2
+            center = float(np.arctan2(nearest.y - cue.y, nearest.x - cue.x))
+            half_span = _alpha(d)
+
+        theta_final = float((center + offset * half_span) % (2.0 * np.pi))
         return CueAction(
             theta=theta_final,
             power=cue_action.power,
@@ -236,7 +258,7 @@ class Billiards4BallInningEnv(gym.Env):
             raise RuntimeError("env.step called before env.reset")
 
         cue_action = _project_action(np.asarray(action, dtype=np.float64))
-        if self._constrain_aim:
+        if self._constrain_aim or self._wide_aim:
             cue_action = self._apply_aim_constraint(cue_action)
 
         # simulate_shot mutates state in place and resets per-shot t origin
