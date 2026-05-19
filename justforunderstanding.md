@@ -118,13 +118,13 @@
 | `--foul_penalty` | float | `0.1` | 파울 시 음수 보상 크기. 파울이면 점수와 무관하게 `-foul_penalty` 받음 |
 | `--gentle_shot` | flag | False | 득점 샷 후 수구가 2번째 목적구 근처(d_target=0.2m)에 멈출수록 가우시안 보너스 `+0.2·exp(-(d-0.2)²/0.02)` |
 
-### 현재 권장 설정 (gentle_shot 200k)
+### 현재 권장 설정 (cosine LR + 500k)
 
 ```bash
 python -m experiments.run_inning_sac \
   --seed 0 \
   --algo sac \
-  --total_steps 200000 \
+  --total_steps 500000 \
   --max_shots 10 \
   --continue_on_miss \
   --constrain_aim \
@@ -134,6 +134,22 @@ python -m experiments.run_inning_sac \
   --gentle_shot \
   --n_envs 4
 ```
+
+> `learning_rate`: 고정 `3e-4` → cosine decay `3e-4 → 1e-4` (`lr_cosine` 함수, `run_inning_sac.py`)
+> `SAC_BUFFER`: 200,000 → 500,000 (500k step에 맞게 확장)
+
+---
+
+## 📊 실험 결과 히스토리
+
+| 실험 | random mean | p1 | p3 | p5 | foul% | 비고 |
+|---|---|---|---|---|---|---|
+| sac_novec_s{0,1,2} | 0.25~0.36 | 20~28% | - | - | - | canonical 암기, random 취약 |
+| sac_rs_200k_s{0,1} | 0.53~0.58 | 35~37% | - | - | - | random_start 도입 |
+| sac_gentle_200k_s0 | 0.575 | 33.5% | - | - | - | gentle_shot 추가 |
+| sac_gentle_200k_s1 | 0.765 | 47.0% | 8.5% | - | 15.5% | seed 운 좋음 |
+| **sac_cosine_500k_s0** | **1.080** | **48.5%** | **17.0%** | **4.0%** | 20.5% | **현재 최고** |
+| sac_cosine_500k_s1 | 0.840 | 42.0% | 10.0% | 2.0% | 14.5% | cosine LR + 500k |
 
 ---
 

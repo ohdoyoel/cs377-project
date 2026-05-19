@@ -57,13 +57,21 @@ from experiments.eval_policy import run_standard_eval  # noqa: E402
 
 
 # ---- shared hyperparameters ----------------------------------------------
+import math
+
 T_MAX = 12.0
 GAMMA = 0.99
 LR = 3e-4
 
+
+def lr_cosine(progress: float) -> float:
+    """3e-4 → 1e-4 cosine decay. progress: 1.0 (start) → 0.0 (end)."""
+    return 1e-4 + (3e-4 - 1e-4) * 0.5 * (1 + math.cos(math.pi * (1 - progress)))
+
+
 # SAC
 SAC_BATCH = 256
-SAC_BUFFER = 200_000
+SAC_BUFFER = 500_000
 SAC_LEARNING_STARTS = 1_000
 
 # TD3
@@ -480,7 +488,7 @@ def main() -> None:
                 model = SAC(
                     policy="MlpPolicy",
                     env=env,
-                    learning_rate=LR,
+                    learning_rate=lr_cosine,
                     buffer_size=SAC_BUFFER,
                     batch_size=SAC_BATCH,
                     gamma=GAMMA,
