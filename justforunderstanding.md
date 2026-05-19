@@ -79,6 +79,61 @@
 
 ---
 
-## 🎯 현재 위치
+## 🎯 `run_inning_sac.py` 플래그 설명
 
-지금 **`experiments/run_inning_sac.py`**에 TD3가 추가된 상태이고, 결과는 **`experiments/runs_inning/{sac,ppo,td3}_s{0,1,2}/`**에 저장돼 있습니다. 분석은 **`notebooks/09_inning_results.ipynb`**에서 이어가면 자연스럽습니다.
+`python -m experiments.run_inning_sac --seed 0 [옵션...]`
+
+### 기본 학습 설정
+
+| 플래그 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `--seed` | int | **(필수)** | 랜덤 시드. 재현성 보장 |
+| `--algo` | sac\|td3 | `sac` | 사용할 RL 알고리즘 (SAC 권장, TD3는 파울% 100% 패턴 있음) |
+| `--total_steps` | int | `100000` | 총 환경 스텝 수 |
+| `--max_shots` | int | `50` | 이닝당 최대 샷 수 (이 수에 도달하면 truncated) |
+| `--eval_episodes` | int | `200` | 학습 후 평가에 사용할 에피소드 수 |
+| `--out_dir` | str | 자동 생성 | 결과 저장 경로 (policy.zip, eval.parquet, config.json) |
+| `--load_policy` | str | None | 기존 policy.zip 경로 → warm-start (이어서 학습) |
+| `--n_envs` | int | `1` | SubprocVecEnv 병렬 환경 수. n=4이면 약 3배 빠름 |
+
+### 환경 행동 제어
+
+| 플래그 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `--continue_on_miss` | flag | False | True 시: miss/foul 후에도 `max_shots`까지 계속 샷. 다양한 상태 노출로 탐색 향상 |
+| `--ignore_opponent` | flag | False | 커리큘럼 1단계: 상대공(흰공)을 점수/파울 판정에서 무시. 물리는 그대로 시뮬레이션 |
+| `--random_start` | flag | False | 매 에피소드 reset 시 공 위치를 랜덤화 → canonical 위치 과적합 방지 |
+
+### 에이전트 행동 보조
+
+| 플래그 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `--constrain_aim` | flag | False | 에이전트의 theta를 가장 가까운 목적구 방향 ±arcsin(2r/d) 범위로 제한. 첫 접촉 보장 |
+| `--extra_features` | flag | False | obs 28→32-dim 확장: d_red1, d_red2, sin(φ), cos(φ) 추가 (두 목적구의 기하 정보) |
+
+### 보상 설계
+
+| 플래그 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `--foul_penalty` | float | `0.1` | 파울 시 음수 보상 크기. 파울이면 점수와 무관하게 `-foul_penalty` 받음 |
+| `--gentle_shot` | flag | False | 득점 샷 후 수구가 2번째 목적구 근처(d_target=0.2m)에 멈출수록 가우시안 보너스 `+0.2·exp(-(d-0.2)²/0.02)` |
+
+### 현재 권장 설정 (gentle_shot 200k)
+
+```bash
+python -m experiments.run_inning_sac \
+  --seed 0 \
+  --algo sac \
+  --total_steps 200000 \
+  --max_shots 10 \
+  --continue_on_miss \
+  --constrain_aim \
+  --extra_features \
+  --random_start \
+  --foul_penalty 0.5 \
+  --gentle_shot \
+  --n_envs 4
+```
+
+---
+
