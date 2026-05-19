@@ -64,6 +64,10 @@ class Billiards4BallInningEnv(gym.Env):
         constrain_aim: bool = False,
         aim_alpha_cap_deg: float = 80.0,
         extra_features: bool = False,
+        gentle_shot: bool = False,
+        gentle_alpha: float = 0.2,
+        gentle_d_target: float = 0.2,
+        gentle_sigma: float = 0.1,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
@@ -92,6 +96,13 @@ class Billiards4BallInningEnv(gym.Env):
         # seen from the nearest red with cue→nearest as the polar axis. The
         # polar angle is split into (sin, cos) to avoid the 2π wrap.
         self._extra_features = bool(extra_features)
+        # Gaussian leave-position bonus: reward the cue ball ending up near
+        # the second red ball after a scoring shot (encourages position play).
+        # Only applied on non-foul scoring shots.
+        self._gentle_shot = bool(gentle_shot)
+        self._gentle_alpha = float(gentle_alpha)
+        self._gentle_d_target = float(gentle_d_target)
+        self._gentle_sigma = float(gentle_sigma)
         obs_dim = OBS_DIM + (EXTRA_FEATURE_DIM if self._extra_features else 0)
 
         self.observation_space = gym.spaces.Box(
@@ -167,6 +178,30 @@ class Billiards4BallInningEnv(gym.Env):
             power=cue_action.power,
             a=cue_action.a,
             b=cue_action.b,
+        )
+
+    def _calc_gentle_reward(self, events: list) -> float:
+        """Gaussian bonus based on cue-ball distance to the second red hit.
+
+        Tracks unique reds in contact order; returns 0 if fewer than two
+        distinct reds were hit (shouldn't happen on a scoring shot, but safe).
+        """
+        reds_hit: list[int] = []
+        for ev in events:
+            if ev["type"] == "cue_hit_red":
+                i, j = ev["detail"]["balls"]
+                red_idx = j if i == self._cue_id else i
+                if red_idx not in reds_hit:
+                    reds_hit.append(red_idx)
+        if len(reds_hit) < 2:
+            return 0.0
+        second_red = self._state.balls[reds_hit[1]]
+        cue = self._state.balls[self._cue_id]
+        dist = float(np.hypot(second_red.x - cue.x, second_red.y - cue.y))
+        return float(
+            self._gentle_alpha
+            * np.exp(-(dist - self._gentle_d_target) ** 2
+                     / (2.0 * self._gentle_sigma ** 2))
         )
 
     # ------------------------------------------------------------------ Gym API
@@ -245,10 +280,18 @@ class Billiards4BallInningEnv(gym.Env):
         }
         self._inning_log_records.append(record)
 
+        # Foul negates the score: a fouled shot earns -foul_penalty regardless
+        # of whether the cue ball happened to hit both reds.
+        if fouled:
+            reward = -self._foul_penalty
+        else:
+            reward = float(score)
+            if score > 0 and self._gentle_shot:
+                reward += self._calc_gentle_reward(result["events"])
+
         if self._continue_on_miss:
             terminated = False
             truncated = self._shot_index >= self._max_shots
-            reward = float(score) - (self._foul_penalty if fouled else 0.0)
             # simulate_shot only zero-clamps balls that ended at rest. When
             # t_max truncates a still-rolling shot the cue ball keeps a
             # residual velocity and the next apply_cue() raises. In
@@ -262,7 +305,6 @@ class Billiards4BallInningEnv(gym.Env):
         else:
             terminated = (score == 0) or fouled
             truncated = (self._shot_index >= self._max_shots) and not terminated
-            reward = float(score)
 
         info: dict[str, Any] = {
             "event_log": result["events"],

@@ -118,6 +118,7 @@ def _env_factory(
     extra_features: bool,
     random_start: bool,
     foul_penalty: float,
+    gentle_shot: bool,
 ):
     """Build a thunk that constructs one Monitor-wrapped env. Used by both
     DummyVecEnv (n_envs=1) and SubprocVecEnv (n_envs>1)."""
@@ -130,6 +131,7 @@ def _env_factory(
             constrain_aim=constrain_aim,
             extra_features=extra_features,
             foul_penalty=foul_penalty,
+            gentle_shot=gentle_shot,
         )
         if random_start:
             env = RandomStartInningEnv(env)
@@ -148,6 +150,7 @@ def _make_train_env(
     extra_features: bool = False,
     random_start: bool = False,
     foul_penalty: float = 0.1,
+    gentle_shot: bool = False,
     n_envs: int = 1,
 ):
     """Vectorized training env. Uses SubprocVecEnv when n_envs>1 so multiple
@@ -163,6 +166,7 @@ def _make_train_env(
             extra_features=extra_features,
             random_start=random_start,
             foul_penalty=foul_penalty,
+            gentle_shot=gentle_shot,
         )
         for i in range(n_envs)
     ]
@@ -373,6 +377,12 @@ def main() -> None:
         help="Penalty subtracted from reward on foul (only in continue_on_miss mode).",
     )
     parser.add_argument(
+        "--gentle_shot",
+        action="store_true",
+        help="Add Gaussian leave-position bonus on scoring shots "
+             "(alpha=0.2, d_target=0.2m, sigma=0.1m).",
+    )
+    parser.add_argument(
         "--n_envs",
         type=int,
         default=1,
@@ -401,6 +411,7 @@ def main() -> None:
             "extra_features": bool(args.extra_features),
             "random_start": bool(args.random_start),
             "foul_penalty": float(args.foul_penalty),
+            "gentle_shot": bool(args.gentle_shot),
             "n_envs": int(args.n_envs),
             "load_policy": args.load_policy,
             "eval_episodes": int(args.eval_episodes),
@@ -442,6 +453,7 @@ def main() -> None:
               f"extra_features={args.extra_features} "
               f"random_start={args.random_start} "
               f"foul_penalty={args.foul_penalty} "
+              f"gentle_shot={args.gentle_shot} "
               f"n_envs={args.n_envs} "
               f"load_policy={args.load_policy} "
               f"out_dir={out_dir}")
@@ -456,6 +468,7 @@ def main() -> None:
             extra_features=bool(args.extra_features),
             random_start=bool(args.random_start),
             foul_penalty=float(args.foul_penalty),
+            gentle_shot=bool(args.gentle_shot),
             n_envs=int(args.n_envs),
         )
 
