@@ -1,0 +1,5 @@
+run_id,algo,eval_mode,mean_score,max_score,p_ge1,p_ge3,p_ge5,foul_rate,n_episodes
+sac_rs_200k_s0,sac,canonical,0.0,0,0.0,0.0,0.0,0.0,50
+sac_rs_200k_s0,sac,random,0.26,2,0.22,0.0,0.0,0.34,50
+sac_rs_200k_s1,sac,canonical,0.0,0,0.0,0.0,0.0,0.0,50
+sac_rs_200k_s1,sac,random,0.5,2,0.38,0.0,0.0,0.28,50

@@ -1,10 +1,13 @@
-"""Train + evaluate SAC or PPO on the multi-shot inning env.
+"""Train + evaluate SAC or TD3 on the multi-shot inning env.
 
 Reward per env step = score for that shot (0 or 1). The episode is a
 Korean-4-ball *inning*: cumulative reward across shots until the policy
 misses, fouls, or hits the per-inning cap. Compared to the single-shot
 ``Billiards4BallEnv`` used in Phase F/G, this exposes credit for
 *chaining* scoring shots in one possession.
+
+PPO is kept in commented-out form for reference (Phase II_b excludes it
+from training since SAC dominated 100% vs PPO 0% in the prior matrix).
 
 Outputs under ``{out_dir}/{run_id}/``:
     training_curve.csv  per-rollout aggregates (ep_return = inning score)
@@ -15,8 +18,12 @@ Outputs under ``{out_dir}/{run_id}/``:
 
 Usage:
     uv run python experiments/run_inning_sac.py \\
-        --algo sac --seed 0 --total_steps 100000 --eval_episodes 200 \\
+        --algo sac --seed 0 --total_steps 50000 --eval_episodes 200 \\
         --out_dir experiments/runs_inning/sac_s0
+
+    uv run python experiments/run_inning_sac.py \\
+        --algo td3 --seed 0 --total_steps 50000 --eval_episodes 200 \\
+        --out_dir experiments/runs_inning/td3_s0
 """
 
 from __future__ import annotations
@@ -37,12 +44,16 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from stable_baselines3 import PPO, SAC  # noqa: E402
+from stable_baselines3 import PPO, SAC, TD3  # noqa: E402
+from stable_baselines3.common.noise import NormalActionNoise  # noqa: E402
 from stable_baselines3.common.callbacks import BaseCallback  # noqa: E402
 from stable_baselines3.common.monitor import Monitor  # noqa: E402
 from stable_baselines3.common.utils import set_random_seed  # noqa: E402
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv  # noqa: E402
 
 from billiards.inning_env import Billiards4BallInningEnv  # noqa: E402
+from billiards.wrappers.random_start_env import RandomStartInningEnv  # noqa: E402
+from experiments.eval_policy import run_standard_eval  # noqa: E402
 
 
 # ---- shared hyperparameters ----------------------------------------------
@@ -55,14 +66,20 @@ SAC_BATCH = 256
 SAC_BUFFER = 200_000
 SAC_LEARNING_STARTS = 1_000
 
-# PPO
-PPO_N_STEPS = 512
-PPO_BATCH = 512
-PPO_N_EPOCHS = 4
-PPO_GAE = 0.95
-PPO_CLIP = 0.2
-PPO_VF = 0.5
-PPO_ENT = 0.01
+# TD3
+TD3_BATCH = 256
+TD3_BUFFER = 200_000
+TD3_LEARNING_STARTS = 1_000
+TD3_ACTION_NOISE_SIGMA = 0.1  # exploration noise stddev (action space scale)
+
+# PPO (excluded from training — kept for reference)
+# PPO_N_STEPS = 512
+# PPO_BATCH = 512
+# PPO_N_EPOCHS = 4
+# PPO_GAE = 0.95
+# PPO_CLIP = 0.2
+# PPO_VF = 0.5
+# PPO_ENT = 0.01
 
 
 # ---------------------------------------------------------------- IO helpers
@@ -92,14 +109,66 @@ class _Tee(io.TextIOBase):
 # ---------------------------------------------------------------- env factory
 
 
-def _make_train_env(max_shots: int, seed: int) -> Monitor:
-    """Single-env wrapper: Monitor records ep_return / ep_length and
-    forwards per-step ``cushion_hits`` / ``fouled`` so we can mean them
-    over an inning."""
-    env = Billiards4BallInningEnv(t_max=T_MAX, max_shots=max_shots)
-    env = Monitor(env, info_keywords=("cushion_hits", "fouled", "score"))
-    env.reset(seed=seed)
-    return env
+def _env_factory(
+    max_shots: int,
+    seed: int,
+    continue_on_miss: bool,
+    ignore_opponent: bool,
+    constrain_aim: bool,
+    extra_features: bool,
+    random_start: bool,
+    foul_penalty: float,
+):
+    """Build a thunk that constructs one Monitor-wrapped env. Used by both
+    DummyVecEnv (n_envs=1) and SubprocVecEnv (n_envs>1)."""
+    def _thunk():
+        env = Billiards4BallInningEnv(
+            t_max=T_MAX,
+            max_shots=max_shots,
+            continue_on_miss=continue_on_miss,
+            ignore_opponent=ignore_opponent,
+            constrain_aim=constrain_aim,
+            extra_features=extra_features,
+            foul_penalty=foul_penalty,
+        )
+        if random_start:
+            env = RandomStartInningEnv(env)
+        env = Monitor(env, info_keywords=("cushion_hits", "fouled", "score"))
+        env.reset(seed=seed)
+        return env
+    return _thunk
+
+
+def _make_train_env(
+    max_shots: int,
+    seed: int,
+    continue_on_miss: bool = False,
+    ignore_opponent: bool = False,
+    constrain_aim: bool = False,
+    extra_features: bool = False,
+    random_start: bool = False,
+    foul_penalty: float = 0.1,
+    n_envs: int = 1,
+):
+    """Vectorized training env. Uses SubprocVecEnv when n_envs>1 so multiple
+    physics simulations run on parallel CPU cores; falls back to DummyVecEnv
+    for n_envs=1 (single-process, no spawn overhead)."""
+    factories = [
+        _env_factory(
+            max_shots=max_shots,
+            seed=seed + i,
+            continue_on_miss=continue_on_miss,
+            ignore_opponent=ignore_opponent,
+            constrain_aim=constrain_aim,
+            extra_features=extra_features,
+            random_start=random_start,
+            foul_penalty=foul_penalty,
+        )
+        for i in range(n_envs)
+    ]
+    if n_envs <= 1:
+        return DummyVecEnv(factories)
+    return SubprocVecEnv(factories)
 
 
 # ---------------------------------------------------------------- callbacks
@@ -198,9 +267,27 @@ class InningCurveCallback(BaseCallback):
 # ---------------------------------------------------------------- evaluation
 
 
-def _evaluate(model, n_episodes: int, seed_base: int, max_shots: int) -> pd.DataFrame:
+def _evaluate(
+    model,
+    n_episodes: int,
+    seed_base: int,
+    max_shots: int,
+    continue_on_miss: bool = False,
+    ignore_opponent: bool = False,
+    constrain_aim: bool = False,
+    extra_features: bool = False,
+    random_start: bool = False,
+) -> pd.DataFrame:
     """Run ``n_episodes`` deterministic innings; one row per inning."""
-    env = Billiards4BallInningEnv(t_max=T_MAX, max_shots=max_shots)
+    base = Billiards4BallInningEnv(
+        t_max=T_MAX,
+        max_shots=max_shots,
+        continue_on_miss=continue_on_miss,
+        ignore_opponent=ignore_opponent,
+        constrain_aim=constrain_aim,
+        extra_features=extra_features,
+    )
+    env = RandomStartInningEnv(base) if random_start else base
     rows: list[dict] = []
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=seed_base + ep)
@@ -219,10 +306,11 @@ def _evaluate(model, n_episodes: int, seed_base: int, max_shots: int) -> pd.Data
                 fouled = True
             if terminated or truncated:
                 break
+        inner = env.unwrapped if random_start else env
         rows.append({
             "ep_idx": int(ep),
             "seed": int(seed_base + ep),
-            "inning_score": int(env.cumulative_score),
+            "inning_score": int(inner.cumulative_score),
             "n_shots": int(n_shots),
             "mean_cushions": float(cushions / max(1, n_shots)),
             "fouled": bool(fouled),
@@ -241,8 +329,56 @@ def main() -> None:
     parser.add_argument("--total_steps", type=int, default=100_000)
     parser.add_argument("--max_shots", type=int, default=50)
     parser.add_argument("--eval_episodes", type=int, default=200)
-    parser.add_argument("--algo", type=str, choices=("sac", "ppo"), default="sac")
+    parser.add_argument("--algo", type=str, choices=("sac", "td3"), default="sac")
     parser.add_argument("--out_dir", type=str, default="experiments/runs_inning")
+    parser.add_argument(
+        "--continue_on_miss",
+        action="store_true",
+        help="Keep shooting until max_shots regardless of miss/foul "
+             "(exposes the policy to diverse mid-rack states).",
+    )
+    parser.add_argument(
+        "--ignore_opponent",
+        action="store_true",
+        help="Curriculum stage 1: score only requires hitting both reds; "
+             "opponent ball contact is not a foul.",
+    )
+    parser.add_argument(
+        "--load_policy",
+        type=str,
+        default=None,
+        help="Path to a policy .zip to warm-start from (stage 2 fine-tune).",
+    )
+    parser.add_argument(
+        "--constrain_aim",
+        action="store_true",
+        help="Map theta into the ±arcsin(2r/d) window around the nearest red "
+             "so the cue ball geometrically must first-contact a red.",
+    )
+    parser.add_argument(
+        "--extra_features",
+        action="store_true",
+        help="Augment obs with d(cue,red1), d(cue,red2), and the polar "
+             "angle (sin,cos) of the other red as seen from the nearest red.",
+    )
+    parser.add_argument(
+        "--random_start",
+        action="store_true",
+        help="Randomize ball positions on each reset via RandomStartInningEnv.",
+    )
+    parser.add_argument(
+        "--foul_penalty",
+        type=float,
+        default=0.1,
+        help="Penalty subtracted from reward on foul (only in continue_on_miss mode).",
+    )
+    parser.add_argument(
+        "--n_envs",
+        type=int,
+        default=1,
+        help="Number of parallel envs (SubprocVecEnv) for training. "
+             "Eval always runs single-env.",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -259,6 +395,14 @@ def main() -> None:
             "seed": int(args.seed),
             "total_steps": int(args.total_steps),
             "max_shots": int(args.max_shots),
+            "continue_on_miss": bool(args.continue_on_miss),
+            "ignore_opponent": bool(args.ignore_opponent),
+            "constrain_aim": bool(args.constrain_aim),
+            "extra_features": bool(args.extra_features),
+            "random_start": bool(args.random_start),
+            "foul_penalty": float(args.foul_penalty),
+            "n_envs": int(args.n_envs),
+            "load_policy": args.load_policy,
             "eval_episodes": int(args.eval_episodes),
             "t_max": T_MAX,
             "gamma": GAMMA,
@@ -270,56 +414,108 @@ def main() -> None:
                 "buffer_size": SAC_BUFFER,
                 "learning_starts": SAC_LEARNING_STARTS,
             })
-        else:
+        elif args.algo == "td3":
             config.update({
-                "n_steps": PPO_N_STEPS,
-                "batch_size": PPO_BATCH,
-                "n_epochs": PPO_N_EPOCHS,
-                "gae_lambda": PPO_GAE,
-                "clip_range": PPO_CLIP,
-                "vf_coef": PPO_VF,
-                "ent_coef": PPO_ENT,
+                "batch_size": TD3_BATCH,
+                "buffer_size": TD3_BUFFER,
+                "learning_starts": TD3_LEARNING_STARTS,
+                "action_noise_sigma": TD3_ACTION_NOISE_SIGMA,
             })
+        # else:
+        #     config.update({
+        #         "n_steps": PPO_N_STEPS,
+        #         "batch_size": PPO_BATCH,
+        #         "n_epochs": PPO_N_EPOCHS,
+        #         "gae_lambda": PPO_GAE,
+        #         "clip_range": PPO_CLIP,
+        #         "vf_coef": PPO_VF,
+        #         "ent_coef": PPO_ENT,
+        #     })
         with (out_dir / "config.json").open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
         print(f"[run_inning] algo={args.algo} seed={args.seed} "
               f"total_steps={args.total_steps} max_shots={args.max_shots} "
+              f"continue_on_miss={args.continue_on_miss} "
+              f"ignore_opponent={args.ignore_opponent} "
+              f"constrain_aim={args.constrain_aim} "
+              f"extra_features={args.extra_features} "
+              f"random_start={args.random_start} "
+              f"foul_penalty={args.foul_penalty} "
+              f"n_envs={args.n_envs} "
+              f"load_policy={args.load_policy} "
               f"out_dir={out_dir}")
 
         set_random_seed(int(args.seed))
-        env = _make_train_env(max_shots=int(args.max_shots), seed=int(args.seed))
+        env = _make_train_env(
+            max_shots=int(args.max_shots),
+            seed=int(args.seed),
+            continue_on_miss=bool(args.continue_on_miss),
+            ignore_opponent=bool(args.ignore_opponent),
+            constrain_aim=bool(args.constrain_aim),
+            extra_features=bool(args.extra_features),
+            random_start=bool(args.random_start),
+            foul_penalty=float(args.foul_penalty),
+            n_envs=int(args.n_envs),
+        )
 
         if args.algo == "sac":
-            model = SAC(
-                policy="MlpPolicy",
-                env=env,
-                learning_rate=LR,
-                buffer_size=SAC_BUFFER,
-                batch_size=SAC_BATCH,
-                gamma=GAMMA,
-                learning_starts=SAC_LEARNING_STARTS,
-                seed=int(args.seed),
-                verbose=0,
-                device="cpu",
-            )
-        else:
-            model = PPO(
-                policy="MlpPolicy",
-                env=env,
-                learning_rate=LR,
-                n_steps=PPO_N_STEPS,
-                batch_size=PPO_BATCH,
-                n_epochs=PPO_N_EPOCHS,
-                gamma=GAMMA,
-                gae_lambda=PPO_GAE,
-                clip_range=PPO_CLIP,
-                vf_coef=PPO_VF,
-                ent_coef=PPO_ENT,
-                seed=int(args.seed),
-                verbose=0,
-                device="cpu",
-            )
+            if args.load_policy:
+                model = SAC.load(args.load_policy, env=env, device="cpu")
+                print(f"[run_inning] loaded SAC policy <- {args.load_policy}")
+            else:
+                model = SAC(
+                    policy="MlpPolicy",
+                    env=env,
+                    learning_rate=LR,
+                    buffer_size=SAC_BUFFER,
+                    batch_size=SAC_BATCH,
+                    gamma=GAMMA,
+                    learning_starts=SAC_LEARNING_STARTS,
+                    seed=int(args.seed),
+                    verbose=0,
+                    device="cpu",
+                )
+        elif args.algo == "td3":
+            if args.load_policy:
+                model = TD3.load(args.load_policy, env=env, device="cpu")
+                print(f"[run_inning] loaded TD3 policy <- {args.load_policy}")
+            else:
+                n_actions = env.action_space.shape[0]
+                action_noise = NormalActionNoise(
+                    mean=np.zeros(n_actions, dtype=np.float32),
+                    sigma=TD3_ACTION_NOISE_SIGMA * np.ones(n_actions, dtype=np.float32),
+                )
+                model = TD3(
+                    policy="MlpPolicy",
+                    env=env,
+                    learning_rate=LR,
+                    buffer_size=TD3_BUFFER,
+                    batch_size=TD3_BATCH,
+                    gamma=GAMMA,
+                    learning_starts=TD3_LEARNING_STARTS,
+                    action_noise=action_noise,
+                    seed=int(args.seed),
+                    verbose=0,
+                    device="cpu",
+                )
+        # else:
+        #     model = PPO(
+        #         policy="MlpPolicy",
+        #         env=env,
+        #         learning_rate=LR,
+        #         n_steps=PPO_N_STEPS,
+        #         batch_size=PPO_BATCH,
+        #         n_epochs=PPO_N_EPOCHS,
+        #         gamma=GAMMA,
+        #         gae_lambda=PPO_GAE,
+        #         clip_range=PPO_CLIP,
+        #         vf_coef=PPO_VF,
+        #         ent_coef=PPO_ENT,
+        #         seed=int(args.seed),
+        #         verbose=0,
+        #         device="cpu",
+        #     )
 
         try:
             cb = InningCurveCallback(out_dir / "training_curve.csv")
@@ -339,6 +535,11 @@ def main() -> None:
                 n_episodes=int(args.eval_episodes),
                 seed_base=int(args.seed) + 10_000,
                 max_shots=int(args.max_shots),
+                continue_on_miss=bool(args.continue_on_miss),
+                ignore_opponent=bool(args.ignore_opponent),
+                constrain_aim=bool(args.constrain_aim),
+                extra_features=bool(args.extra_features),
+                random_start=bool(args.random_start),
             )
             eval_wall = time.perf_counter() - t_eval0
             eval_path = out_dir / "eval.parquet"
@@ -378,6 +579,14 @@ def main() -> None:
                 f"p>=1={p_ge1:.1f}% p>=3={p_ge3:.1f}% p>=5={p_ge5:.1f}% "
                 f"mean_shots={mean_shots:.2f} foul%={foul_rate:.2f} "
                 f"wall={wall:.1f}s"
+            )
+
+            print("[eval] running standard eval (canonical + random, continue_on_miss=False) ...")
+            run_standard_eval(
+                model,
+                out_dir=out_dir,
+                constrain_aim=bool(args.constrain_aim),
+                extra_features=bool(args.extra_features),
             )
         finally:
             try:

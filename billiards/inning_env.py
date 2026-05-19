@@ -26,6 +26,7 @@ from .physics import (
 )
 
 OBS_DIM = 4 * 7  # 28
+EXTRA_FEATURE_DIM = 4  # d_red1, d_red2, sin(phi), cos(phi)
 
 
 def _spec_to_dict(spec: TableSpec) -> dict[str, float]:
@@ -57,15 +58,44 @@ class Billiards4BallInningEnv(gym.Env):
         cue_id: int = int(BallRole.CUE_WHITE),
         t_max: float = 12.0,
         max_shots: int = 50,
+        continue_on_miss: bool = False,
+        foul_penalty: float = 0.1,
+        ignore_opponent: bool = False,
+        constrain_aim: bool = False,
+        aim_alpha_cap_deg: float = 80.0,
+        extra_features: bool = False,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
         self._cue_id = cue_id
         self._t_max = t_max
         self._max_shots = int(max_shots)
+        # When True, the episode never terminates on miss/foul; the policy
+        # keeps shooting from whatever ball configuration the previous shot
+        # produced until ``max_shots`` is reached. Used to expose the policy
+        # to a wide distribution of in-play states during training.
+        self._continue_on_miss = bool(continue_on_miss)
+        self._foul_penalty = float(foul_penalty)
+        # Curriculum stage 1: pretend the opponent ball doesn't exist for
+        # scoring/foul purposes. Physics still simulates all 4 balls (so the
+        # observation space is unchanged), but score depends only on the cue
+        # ball hitting both reds and ``fouled`` is forced False.
+        self._ignore_opponent = bool(ignore_opponent)
+        # Geometric aim constraint: map agent's theta into the ±alpha window
+        # that geometrically guarantees first contact with the nearest red
+        # ball. alpha = arcsin(2r/d), capped at ``aim_alpha_cap_deg`` to keep
+        # the projection well-defined when d is close to 2r.
+        self._constrain_aim = bool(constrain_aim)
+        self._aim_alpha_cap = float(np.radians(aim_alpha_cap_deg))
+        # Augment obs with hand-crafted geometric features about the two reds:
+        # distance to each red, plus the polar angle of the *other* red as
+        # seen from the nearest red with cue→nearest as the polar axis. The
+        # polar angle is split into (sin, cos) to avoid the 2π wrap.
+        self._extra_features = bool(extra_features)
+        obs_dim = OBS_DIM + (EXTRA_FEATURE_DIM if self._extra_features else 0)
 
         self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
         self.action_space = gym.spaces.Box(
             low=np.array([0.0, 0.0, -1.0, -1.0], dtype=np.float32),
@@ -88,7 +118,56 @@ class Billiards4BallInningEnv(gym.Env):
 
     def _obs(self) -> np.ndarray:
         assert self._state is not None
-        return self._state.to_array().reshape(-1).astype(np.float32)
+        base = self._state.to_array().reshape(-1).astype(np.float32)
+        if not self._extra_features:
+            return base
+        cue = self._state.balls[self._cue_id]
+        red1 = self._state.balls[int(BallRole.RED_1)]
+        red2 = self._state.balls[int(BallRole.RED_2)]
+        d1 = float(np.hypot(red1.x - cue.x, red1.y - cue.y))
+        d2 = float(np.hypot(red2.x - cue.x, red2.y - cue.y))
+        if d1 <= d2:
+            nearest, other = red1, red2
+        else:
+            nearest, other = red2, red1
+        axis = float(np.arctan2(cue.y - nearest.y, cue.x - nearest.x))
+        other_dir = float(np.arctan2(other.y - nearest.y, other.x - nearest.x))
+        phi = other_dir - axis
+        extras = np.array(
+            [d1, d2, float(np.sin(phi)), float(np.cos(phi))],
+            dtype=np.float32,
+        )
+        return np.concatenate([base, extras], axis=0)
+
+    def _apply_aim_constraint(self, cue_action: CueAction) -> CueAction:
+        """Remap agent's theta into the angular tolerance that guarantees the
+        cue ball will first-contact the nearest red. theta is interpreted as
+        an offset in [-1, 1] (linearly from [0, 2π]) and scaled by alpha."""
+        assert self._state is not None
+        cue = self._state.balls[self._cue_id]
+        r = self._state.spec.ball_radius
+        red1 = self._state.balls[int(BallRole.RED_1)]
+        red2 = self._state.balls[int(BallRole.RED_2)]
+        d1 = float(np.hypot(red1.x - cue.x, red1.y - cue.y))
+        d2 = float(np.hypot(red2.x - cue.x, red2.y - cue.y))
+        if d1 <= d2:
+            nearest, d = red1, d1
+        else:
+            nearest, d = red2, d2
+        target_dir = float(np.arctan2(nearest.y - cue.y, nearest.x - cue.x))
+        if d <= 2.0 * r:
+            alpha = self._aim_alpha_cap
+        else:
+            sin_a = min(2.0 * r / d, float(np.sin(self._aim_alpha_cap)))
+            alpha = float(np.arcsin(sin_a))
+        offset = (cue_action.theta - np.pi) / np.pi  # [-1, 1]
+        theta_final = float((target_dir + offset * alpha) % (2.0 * np.pi))
+        return CueAction(
+            theta=theta_final,
+            power=cue_action.power,
+            a=cue_action.a,
+            b=cue_action.b,
+        )
 
     # ------------------------------------------------------------------ Gym API
 
@@ -122,6 +201,8 @@ class Billiards4BallInningEnv(gym.Env):
             raise RuntimeError("env.step called before env.reset")
 
         cue_action = _project_action(np.asarray(action, dtype=np.float64))
+        if self._constrain_aim:
+            cue_action = self._apply_aim_constraint(cue_action)
 
         # simulate_shot mutates state in place and resets per-shot t origin
         # via state.t (which is currently whatever we left it at). We snap
@@ -137,8 +218,18 @@ class Billiards4BallInningEnv(gym.Env):
         self._shot_offsets.append(offset)
         self._cumulative_t = offset + float(result["duration"])
 
-        score = int(result["score"])
-        fouled = bool(result["fouled"])
+        if self._ignore_opponent:
+            reds: set[int] = set()
+            for ev in result["events"]:
+                if ev["type"] == "cue_hit_red":
+                    i, j = ev["detail"]["balls"]
+                    red_idx = j if i == self._cue_id else i
+                    reds.add(red_idx)
+            score = 1 if len(reds) >= 2 else 0
+            fouled = False
+        else:
+            score = int(result["score"])
+            fouled = bool(result["fouled"])
         self._cumulative_score += score
         self._shot_index += 1
 
@@ -154,9 +245,24 @@ class Billiards4BallInningEnv(gym.Env):
         }
         self._inning_log_records.append(record)
 
-        terminated = (score == 0) or fouled
-        truncated = (self._shot_index >= self._max_shots) and not terminated
-        reward = float(score)
+        if self._continue_on_miss:
+            terminated = False
+            truncated = self._shot_index >= self._max_shots
+            reward = float(score) - (self._foul_penalty if fouled else 0.0)
+            # simulate_shot only zero-clamps balls that ended at rest. When
+            # t_max truncates a still-rolling shot the cue ball keeps a
+            # residual velocity and the next apply_cue() raises. In
+            # continue_on_miss mode we force the table to a halt between
+            # shots so the next shot is always well-defined.
+            if not truncated:
+                for b in self._state.balls:
+                    b.vx = b.vy = 0.0
+                    b.wx = b.wy = 0.0
+                    b.wz = 0.0
+        else:
+            terminated = (score == 0) or fouled
+            truncated = (self._shot_index >= self._max_shots) and not terminated
+            reward = float(score)
 
         info: dict[str, Any] = {
             "event_log": result["events"],

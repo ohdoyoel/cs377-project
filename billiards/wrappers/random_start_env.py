@@ -156,8 +156,8 @@ class RandomStartInningEnv(gym.Wrapper):
         inner._inning_log_records = []  # type: ignore[attr-defined]
         inner._last_info = None  # type: ignore[attr-defined]
 
-        # Use the same flatten as the underlying env.
-        obs = new_state.to_array().reshape(-1).astype(np.float32)
+        # Use the inner env's _obs() so extra_features is respected.
+        obs = inner._obs()  # type: ignore[attr-defined]
         info = dict(info) if info is not None else {}
         info["random_start"] = True
         info["random_start_fallback"] = bool(used_fallback)
