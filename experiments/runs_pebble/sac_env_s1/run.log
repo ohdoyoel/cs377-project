@@ -1,4 +1,0 @@
-[run_pebble] kind=sac_env seed=1 total_steps=30000 out_dir=experiments/runs_pebble/sac_env_s1
-[run_pebble] train done in 249.2s queries=0
-[run_pebble] eval n=500 done in 1.8s -> experiments/runs_pebble/sac_env_s1/eval.parquet
-[run_pebble] DONE kind=sac_env seed=1 true_score%=100.00 rm_mean=nan foul%=0.00 cush=5.00 wall=251.1s

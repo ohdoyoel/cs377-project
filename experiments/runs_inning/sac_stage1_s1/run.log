@@ -1,5 +1,0 @@
-[run_inning] algo=sac seed=1 total_steps=50000 max_shots=10 continue_on_miss=True ignore_opponent=True load_policy=None out_dir=experiments\runs_inning\sac_stage1_s1
-[run_inning] train done in 494.1s
-[run_inning] saved policy -> experiments\runs_inning\sac_stage1_s1\policy.zip
-[run_inning] eval n=200 done in 5.5s -> experiments\runs_inning\sac_stage1_s1\eval.parquet
-[run_inning] DONE algo=sac seed=1 mean_inning=0.000 max=0 p>=1=0.0% p>=3=0.0% p>=5=0.0% mean_shots=10.00 foul%=0.00 wall=500.4s

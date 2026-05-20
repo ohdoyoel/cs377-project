@@ -1,8 +1,0 @@
-[run_inning] algo=sac seed=1 total_steps=200000 max_shots=10 continue_on_miss=True ignore_opponent=False constrain_aim=True extra_features=True random_start=True foul_penalty=0.5 gentle_shot=True n_envs=4 load_policy=None out_dir=experiments\runs_inning\sac_gentle_200k_s1
-[run_inning] train done in 546.6s
-[run_inning] saved policy -> experiments\runs_inning\sac_gentle_200k_s1\policy.zip
-[run_inning] eval n=200 done in 5.6s -> experiments\runs_inning\sac_gentle_200k_s1\eval.parquet
-[run_inning] DONE algo=sac seed=1 mean_inning=4.160 max=9 p>=1=100.0% p>=3=86.5% p>=5=39.0% mean_shots=10.00 foul%=59.00 wall=554.6s
-[eval] running standard eval (canonical + random, continue_on_miss=False) ...
-[eval] canonical  mean=0.000  max=0  p1=0.0%  p3=0.0%  p5=0.0%  foul=0.0%
-[eval] random     mean=0.765  max=5  p1=47.0%  p3=8.5%  p5=0.5%  foul=15.5%

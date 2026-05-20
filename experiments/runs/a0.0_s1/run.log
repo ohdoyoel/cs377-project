@@ -1,5 +1,0 @@
-[run_one] alpha=0.0 seed=1 total_steps=50000 out_dir=experiments/runs/a0.0_s1
-[run_one] train done in 42.1s
-[run_one] saved policy -> experiments/runs/a0.0_s1/policy.zip
-[run_one] eval n=500 done in 1.5s -> experiments/runs/a0.0_s1/eval.parquet
-[run_one] DONE alpha=0.0 seed=1 true_score%=0.00 rm_norm=2.781 foul%=0.00 cush=5.00 wall=45.7s

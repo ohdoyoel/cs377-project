@@ -1,1 +1,0 @@
-[run_inning] algo=sac seed=1 total_steps=50000 max_shots=10 continue_on_miss=True out_dir=experiments\runs_inning\sac_cont_s1

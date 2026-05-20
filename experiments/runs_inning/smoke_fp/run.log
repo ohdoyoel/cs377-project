@@ -1,8 +1,0 @@
-[run_inning] algo=sac seed=0 total_steps=500 max_shots=5 continue_on_miss=True ignore_opponent=False constrain_aim=True extra_features=True random_start=True foul_penalty=0.1 n_envs=2 load_policy=None out_dir=experiments\runs_inning\smoke_fp
-[run_inning] train done in 0.9s
-[run_inning] saved policy -> experiments\runs_inning\smoke_fp\policy.zip
-[run_inning] eval n=200 done in 2.4s -> experiments\runs_inning\smoke_fp\eval.parquet
-[run_inning] DONE algo=sac seed=0 mean_inning=0.035 max=1 p>=1=3.5% p>=3=0.0% p>=5=0.0% mean_shots=5.00 foul%=16.00 wall=5.7s
-[eval] running standard eval (canonical + random, continue_on_miss=False) ...
-[eval] canonical  mean=0.000  max=0  p1=0.0%  p3=0.0%  p5=0.0%  foul=0.0%
-[eval] random     mean=0.010  max=1  p1=1.0%  p3=0.0%  p5=0.0%  foul=4.0%
