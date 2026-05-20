@@ -1,0 +1,20 @@
+{
+  "canonical": {
+    "mean_score": 0.0,
+    "max_score": 0,
+    "p_ge1": 0.0,
+    "p_ge3": 0.0,
+    "p_ge5": 0.0,
+    "foul_rate": 0.0,
+    "n_episodes": 200
+  },
+  "random": {
+    "mean_score": 0.57,
+    "max_score": 6,
+    "p_ge1": 0.35,
+    "p_ge3": 0.06,
+    "p_ge5": 0.01,
+    "foul_rate": 0.16,
+    "n_episodes": 200
+  }
+}

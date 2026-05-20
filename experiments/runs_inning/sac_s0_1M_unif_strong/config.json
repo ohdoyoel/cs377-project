@@ -1,0 +1,22 @@
+{
+  "algo": "sac",
+  "seed": 0,
+  "total_steps": 1000000,
+  "max_shots": 50,
+  "eval_episodes": 200,
+  "randomize_mode": "uniform",
+  "jitter_scale": 0.3,
+  "reward_shaping": true,
+  "setup_bonus_max": 2.0,
+  "setup_bonus_scale": 0.3,
+  "partial_bonus": 0.3,
+  "cushion_bonus": 0.02,
+  "eval_freq": 20000,
+  "eval_episodes_during": 50,
+  "t_max": 12.0,
+  "gamma": 0.99,
+  "learning_rate": 0.0003,
+  "batch_size": 256,
+  "buffer_size": 200000,
+  "learning_starts": 1000
+}

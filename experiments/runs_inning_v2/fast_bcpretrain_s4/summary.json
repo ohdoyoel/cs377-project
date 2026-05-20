@@ -1,0 +1,17 @@
+{
+  "method": "bc_pretrain_then_sac",
+  "seed": 4,
+  "n_envs": 8,
+  "total_steps": 400000,
+  "teachers": [
+    "/Users/ohdoyoel/work/side/cs377/project/.claude/worktrees/origin-main-eval/experiments/runs_inning_v2/fast_long_fp02_s4/policy.zip",
+    "/Users/ohdoyoel/work/side/cs377/project/.claude/worktrees/origin-main-eval/experiments/runs_inning_v2/fast_long_fp02_s1/policy.zip",
+    "/Users/ohdoyoel/work/side/cs377/project/.claude/worktrees/origin-main-eval/experiments/runs_inning_v2/fast_long_fp02_s6/policy.zip"
+  ],
+  "n_teacher_eps_each": 1500,
+  "bc_pairs": 45000,
+  "bc_epochs": 30,
+  "bc_batch": 512,
+  "bc_lr": 0.0003,
+  "train_wall_s": 953.1277530193329
+}
