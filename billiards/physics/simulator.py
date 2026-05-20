@@ -78,7 +78,7 @@ def simulate_shot(
     state: TableState,
     action: CueAction,
     t_max: float = 30.0,
-    dt_max: float = 0.05,
+    dt_max: float = 0.1,
     v_max: float = V_MAX_DEFAULT,
 ) -> dict[str, Any]:
     """Run a single shot to completion (or t_max). Mutates `state`.

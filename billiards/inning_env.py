@@ -68,6 +68,9 @@ class Billiards4BallInningEnv(gym.Env):
         gentle_alpha: float = 0.2,
         gentle_d_target: float = 0.2,
         gentle_sigma: float = 0.1,
+        setup_shaping: bool = False,
+        setup_alpha: float = 0.05,
+        setup_scale: float = 0.3,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
@@ -103,6 +106,15 @@ class Billiards4BallInningEnv(gym.Env):
         self._gentle_alpha = float(gentle_alpha)
         self._gentle_d_target = float(gentle_d_target)
         self._gentle_sigma = float(gentle_sigma)
+        # Dense per-shot shaping: bonus = setup_alpha * exp(-d_min/setup_scale)
+        # applied after every non-fouled shot. d_min is the post-shot distance
+        # from cue ball to its nearest red. Encourages the cue ball to end the
+        # shot close to a red so the next attempt has a good aim, even when
+        # the current shot didn't score. Keep setup_alpha small (~0.05) so the
+        # +1 score reward dominates the per-inning sum.
+        self._setup_shaping = bool(setup_shaping)
+        self._setup_alpha = float(setup_alpha)
+        self._setup_scale = float(setup_scale)
         obs_dim = OBS_DIM + (EXTRA_FEATURE_DIM if self._extra_features else 0)
 
         self.observation_space = gym.spaces.Box(
@@ -247,6 +259,15 @@ class Billiards4BallInningEnv(gym.Env):
         self._state.t = 0.0
         result = simulate_shot(self._state, cue_action, t_max=self._t_max)
 
+        # Defensive: simulate_shot can return with residual velocity if the
+        # inner loop hit t_max before balls settled. Without snapping, the
+        # next apply_cue raises ("cue ball must be at rest"). Snap here so
+        # downstream code is safe regardless of continue_on_miss mode.
+        if not self._state.all_at_rest():
+            for b in self._state.balls:
+                b.vx = b.vy = 0.0
+                b.wx = b.wy = b.wz = 0.0
+
         # Record per-shot trajectory (raw, local-time).
         shot_traj: list[tuple[float, np.ndarray]] = list(result["trajectory"])
         self._shot_trajectories.append(shot_traj)
@@ -288,6 +309,14 @@ class Billiards4BallInningEnv(gym.Env):
             reward = float(score)
             if score > 0 and self._gentle_shot:
                 reward += self._calc_gentle_reward(result["events"])
+            if self._setup_shaping:
+                cue = self._state.balls[self._cue_id]
+                r1 = self._state.balls[int(BallRole.RED_1)]
+                r2 = self._state.balls[int(BallRole.RED_2)]
+                d1 = float(np.hypot(cue.x - r1.x, cue.y - r1.y))
+                d2 = float(np.hypot(cue.x - r2.x, cue.y - r2.y))
+                d_min = min(d1, d2)
+                reward += self._setup_alpha * float(np.exp(-d_min / self._setup_scale))
 
         if self._continue_on_miss:
             terminated = False
@@ -306,20 +335,26 @@ class Billiards4BallInningEnv(gym.Env):
             terminated = (score == 0) or fouled
             truncated = (self._shot_index >= self._max_shots) and not terminated
 
-        info: dict[str, Any] = {
-            "event_log": result["events"],
+        # Slim info for VecEnv IPC: trajectory + event_log + spec are heavy
+        # to pickle every step and never consumed by training (Monitor only
+        # touches the scalar keys). Keep the full record in self._last_info
+        # so render() / notebooks still work.
+        slim_info: dict[str, Any] = {
             "cushion_hits": result["cushion_hits"],
             "fouled": fouled,
             "score": score,
             "duration": result["duration"],
-            "trajectory": shot_traj,
-            "spec": _spec_to_dict(self._spec),
-            "cue_id": self._cue_id,
             "shot_index": self._shot_index,
             "cumulative_score": self._cumulative_score,
         }
-        self._last_info = info
-        return self._obs(), reward, terminated, truncated, info
+        self._last_info = {
+            **slim_info,
+            "event_log": result["events"],
+            "trajectory": shot_traj,
+            "spec": _spec_to_dict(self._spec),
+            "cue_id": self._cue_id,
+        }
+        return self._obs(), reward, terminated, truncated, slim_info
 
     def render(self) -> Any:
         if self._last_info is None:

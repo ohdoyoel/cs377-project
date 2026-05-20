@@ -119,6 +119,9 @@ def _env_factory(
     random_start: bool,
     foul_penalty: float,
     gentle_shot: bool,
+    setup_shaping: bool = False,
+    setup_alpha: float = 0.05,
+    setup_scale: float = 0.3,
 ):
     """Build a thunk that constructs one Monitor-wrapped env. Used by both
     DummyVecEnv (n_envs=1) and SubprocVecEnv (n_envs>1)."""
@@ -132,6 +135,9 @@ def _env_factory(
             extra_features=extra_features,
             foul_penalty=foul_penalty,
             gentle_shot=gentle_shot,
+            setup_shaping=setup_shaping,
+            setup_alpha=setup_alpha,
+            setup_scale=setup_scale,
         )
         if random_start:
             env = RandomStartInningEnv(env)
@@ -151,6 +157,9 @@ def _make_train_env(
     random_start: bool = False,
     foul_penalty: float = 0.1,
     gentle_shot: bool = False,
+    setup_shaping: bool = False,
+    setup_alpha: float = 0.05,
+    setup_scale: float = 0.3,
     n_envs: int = 1,
 ):
     """Vectorized training env. Uses SubprocVecEnv when n_envs>1 so multiple
@@ -167,6 +176,9 @@ def _make_train_env(
             random_start=random_start,
             foul_penalty=foul_penalty,
             gentle_shot=gentle_shot,
+            setup_shaping=setup_shaping,
+            setup_alpha=setup_alpha,
+            setup_scale=setup_scale,
         )
         for i in range(n_envs)
     ]
@@ -383,12 +395,38 @@ def main() -> None:
              "(alpha=0.2, d_target=0.2m, sigma=0.1m).",
     )
     parser.add_argument(
+        "--setup_shaping",
+        action="store_true",
+        help="Dense per-shot bonus: setup_alpha*exp(-d_min/setup_scale) "
+             "after every non-foul shot. Encourages cue ball to end near a "
+             "red even on a miss, so next attempt has a good aim.",
+    )
+    parser.add_argument("--setup_alpha", type=float, default=0.05)
+    parser.add_argument("--setup_scale", type=float, default=0.3)
+    parser.add_argument(
         "--n_envs",
         type=int,
         default=1,
         help="Number of parallel envs (SubprocVecEnv) for training. "
              "Eval always runs single-env.",
     )
+    parser.add_argument(
+        "--gradient_steps",
+        type=int,
+        default=1,
+        help="SAC/TD3 gradient steps per env step (-1 = match n_envs). "
+             "With n_envs>1 you usually want this to equal n_envs/k to "
+             "match a single-env update budget.",
+    )
+    parser.add_argument(
+        "--net_arch",
+        type=str,
+        default="",
+        help="Comma-separated MLP hidden sizes, e.g. '400,300'. "
+             "Empty = SB3 default ([256,256] for SAC).",
+    )
+    parser.add_argument("--gamma", type=float, default=GAMMA)
+    parser.add_argument("--buffer_size", type=int, default=SAC_BUFFER)
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -412,7 +450,12 @@ def main() -> None:
             "random_start": bool(args.random_start),
             "foul_penalty": float(args.foul_penalty),
             "gentle_shot": bool(args.gentle_shot),
+            "setup_shaping": bool(args.setup_shaping),
+            "setup_alpha": float(args.setup_alpha),
+            "setup_scale": float(args.setup_scale),
             "n_envs": int(args.n_envs),
+            "gradient_steps": int(args.gradient_steps),
+            "net_arch": str(args.net_arch),
             "load_policy": args.load_policy,
             "eval_episodes": int(args.eval_episodes),
             "t_max": T_MAX,
@@ -469,8 +512,17 @@ def main() -> None:
             random_start=bool(args.random_start),
             foul_penalty=float(args.foul_penalty),
             gentle_shot=bool(args.gentle_shot),
+            setup_shaping=bool(args.setup_shaping),
+            setup_alpha=float(args.setup_alpha),
+            setup_scale=float(args.setup_scale),
             n_envs=int(args.n_envs),
         )
+
+        policy_kwargs = None
+        if args.net_arch:
+            sizes = [int(x) for x in args.net_arch.split(",") if x.strip()]
+            policy_kwargs = {"net_arch": sizes}
+            print(f"[run_inning] custom net_arch={sizes}")
 
         if args.algo == "sac":
             if args.load_policy:
@@ -481,10 +533,12 @@ def main() -> None:
                     policy="MlpPolicy",
                     env=env,
                     learning_rate=LR,
-                    buffer_size=SAC_BUFFER,
+                    buffer_size=int(args.buffer_size),
                     batch_size=SAC_BATCH,
-                    gamma=GAMMA,
+                    gamma=float(args.gamma),
                     learning_starts=SAC_LEARNING_STARTS,
+                    gradient_steps=int(args.gradient_steps),
+                    policy_kwargs=policy_kwargs,
                     seed=int(args.seed),
                     verbose=0,
                     device="cpu",
