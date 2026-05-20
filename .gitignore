@@ -33,3 +33,28 @@ Thumbs.db
 # Env
 .env
 .env.local
+
+# ---- Training outputs ----
+# Keep small metadata (config.json, summary.json, eval_summary.json,
+# training_curve.csv); exclude large binaries below.
+
+# Policy checkpoints (3-7 MB each, hundreds of runs)
+experiments/runs*/**/policy.zip
+experiments/runs*/**/best_model.zip
+experiments/runs*/**/evaluations.npz
+
+# Eval rollout data (large parquets, derivable from policy)
+experiments/runs*/**/eval.parquet
+experiments/runs*/**/eval_canonical.parquet
+experiments/runs*/**/eval_random.parquet
+
+# Verbose run logs
+experiments/runs*/**/run.log
+experiments/runs*/**/stdout.log
+
+# Large HTML render artifacts (multi-MB; keep best_inning/ for showcase)
+artifacts/iclr/
+artifacts/preference_demo/
+artifacts/watch/
+artifacts/replay_smoke.html
+artifacts/shot*.html
