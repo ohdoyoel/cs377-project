@@ -58,3 +58,7 @@ artifacts/preference_demo/
 artifacts/watch/
 artifacts/replay_smoke.html
 artifacts/shot*.html
+
+# Extreme-chain HTMLs (>100 MB, beyond GitHub file size limit)
+artifacts/best_inning/INFINITY_adaptive_*.html
+artifacts/best_inning/INFINITY_multiseed_*.html
