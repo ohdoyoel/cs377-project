@@ -43,6 +43,9 @@ from .state import BallRole, CueAction, TableState
 
 INF = float("inf")
 EVENT_EPS = 1e-9   # don't re-trigger the same contact within this window
+BOUNDARY_EPS = 1e-10
+MISSED_CUSHION_DEPTH_EPS = 1e-4
+BINARY_SEARCH_ITERS = 48
 
 
 def _ball_kind(idx: int, cue_id: int) -> str:
@@ -72,6 +75,100 @@ def _cushion_event_name(kind: str) -> str:
     if kind == "opp":
         return "opp_cushion"
     return "red_cushion"
+
+
+def _outside_wall(ball, spec, normal: tuple[float, float], eps: float = BOUNDARY_EPS) -> bool:
+    r = spec.ball_radius
+    if normal == (1.0, 0.0):
+        return ball.x < r - eps
+    if normal == (-1.0, 0.0):
+        return ball.x > spec.width - r + eps
+    if normal == (0.0, 1.0):
+        return ball.y < r - eps
+    if normal == (0.0, -1.0):
+        return ball.y > spec.height - r + eps
+    return False
+
+
+def _deepest_wall_violation(
+    ball,
+    spec,
+    min_depth: float = BOUNDARY_EPS,
+) -> tuple[float, tuple[float, float]] | None:
+    r = spec.ball_radius
+    candidates = [
+        (r - ball.x, (1.0, 0.0)),
+        (ball.x - (spec.width - r), (-1.0, 0.0)),
+        (r - ball.y, (0.0, 1.0)),
+        (ball.y - (spec.height - r), (0.0, -1.0)),
+    ]
+    depth, normal = max(candidates, key=lambda item: item[0])
+    if depth <= min_depth:
+        return None
+    return depth, normal
+
+
+def _snap_ball_to_cushion(ball, normal: tuple[float, float], spec) -> None:
+    r = spec.ball_radius
+    if normal == (1.0, 0.0):
+        ball.x = r
+    elif normal == (-1.0, 0.0):
+        ball.x = spec.width - r
+    elif normal == (0.0, 1.0):
+        ball.y = r
+    elif normal == (0.0, -1.0):
+        ball.y = spec.height - r
+
+
+def _find_missed_cushion_crossing(
+    state: TableState,
+    max_dt: float,
+) -> tuple[float, int, tuple[float, float]] | None:
+    """Find a wall crossing missed by approximate cushion TOI projection.
+
+    Cushion TOI is intentionally cheap and uses a rolling approximation, while
+    `step_free` may still be in the slip regime. Strong spin can therefore
+    cross a rail inside the current substep even when TOI predicts the hit just
+    outside it. This fallback probes the actual free-flight dynamics and uses
+    bisection to schedule the missed cushion collision.
+    """
+    if max_dt <= EVENT_EPS:
+        return None
+
+    end_state = state.copy()
+    step_free(end_state, max_dt)
+
+    best: tuple[float, int, tuple[float, float]] | None = None
+    for i, end_ball in enumerate(end_state.balls):
+        violation = _deepest_wall_violation(
+            end_ball,
+            state.spec,
+            min_depth=MISSED_CUSHION_DEPTH_EPS,
+        )
+        if violation is None:
+            continue
+        _, normal = violation
+
+        start_ball = state.balls[i]
+        if _outside_wall(start_ball, state.spec, normal):
+            crossing_t = 0.0
+        else:
+            low = 0.0
+            high = max_dt
+            for _ in range(BINARY_SEARCH_ITERS):
+                mid = 0.5 * (low + high)
+                probe = state.copy()
+                step_free(probe, mid)
+                if _outside_wall(probe.balls[i], state.spec, normal):
+                    high = mid
+                else:
+                    low = mid
+            crossing_t = high
+
+        if best is None or crossing_t < best[0]:
+            best = (crossing_t, i, normal)
+
+    return best
 
 
 def simulate_shot(
@@ -133,13 +230,35 @@ def simulate_shot(
 
         # Don't overshoot remaining time budget
         remaining = t_max - (state.t - t0)
-        step = max(EVENT_EPS, min(best_t, remaining))
+        step_budget = min(best_t, remaining)
+
+        missed_cushion = _find_missed_cushion_crossing(state, step_budget)
+        if missed_cushion is not None:
+            missed_t, missed_i, missed_normal = missed_cushion
+            if best_kind == "tick" or missed_t < step_budget - EVENT_EPS:
+                best_t = missed_t
+                best_kind = "cushion"
+                best_payload = (missed_i, missed_normal, True)
+                step_budget = min(best_t, remaining)
+
+        step = max(EVENT_EPS, step_budget)
 
         step_free(state, step)
 
         if best_kind == "cushion" and step >= best_t - EVENT_EPS and best_payload is not None:
-            i, normal = best_payload
+            i, normal, *payload_flags = best_payload
+            from_missed_cushion = bool(payload_flags and payload_flags[0])
             kind = _ball_kind(i, cue_id)
+            large_violation = (
+                _deepest_wall_violation(
+                    state.balls[i],
+                    spec,
+                    min_depth=MISSED_CUSHION_DEPTH_EPS,
+                )
+                is not None
+            )
+            if from_missed_cushion or large_violation:
+                _snap_ball_to_cushion(state.balls[i], normal, spec)
             resolve_ball_cushion(state.balls[i], normal, spec)
             ev = {
                 "t": state.t,
