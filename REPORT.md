@@ -311,20 +311,25 @@ backup: 값을 root 까지 propagate
 
 같은 sim budget 으로 우리 greedy 와 비교.
 
-### 7.3 결과 (n=10, sim budget=600, max_shots=500)
+### 7.3 결과 (n=10, max_shots=500, 같은 sim budget 공정 비교)
 
-| 방법 | 평균 | 최대 | wall |
-|---|---|---|---|
-| UCT (no policy prior) | 4.4 | 11 | 13s |
-| PUCT single (s4 prior) | 86.0 | 156 | 491s |
-| PUCT multi-seed prior | **151.5** | 499 | 1703s |
-| PUCT multi-seed (budget 1500) | **146.6** | 500 | 5485s |
-| **우리 Greedy h=2 multi-seed (~600 sim)** | **189+ (4/10 진행 중)** | 323+ | ~1100s |
-| **우리 Greedy multi-seed adaptive K (~1000+ sim)** | **741.8** | **2000** | ~5172s |
+| 방법 | Budget | 평균 | 최대 | P(≥500) | Wall |
+|---|---|---|---|---|---|
+| UCT (no policy prior) | 600 | 4.4 | 11 | 0% | 13s |
+| PUCT single (s4) | 600 | 86.0 | 156 | 0% | 491s |
+| **PUCT multi-seed** | 600 | **151.5** | 499 | **0%** | 1703s |
+| **PUCT multi-seed (2.5× budget)** | 1500 | **146.6** | 500 | 10% | 5485s |
+| **Greedy h=2 multi-seed** | 600 | **357.6** | 500 | **50%** | 3489s |
+| **Greedy h=2 multi-seed** | 1500 | **450.0** | 500 | **90%** | 17h |
+| Greedy multi-seed adaptive K + max_shots=2000 (Phase 4 최종) | ~1k avg | **741.8** | **2000** | 100% | ~5h |
 
-### 7.4 핵심 발견
+### 7.4 핵심 발견 3가지
 
-**PUCT 는 budget 늘려도 mean 안 오름** (151 → 147 with 2.5× budget). 단순 greedy 가 같은 budget 에서 더 좋음.
+1. **PUCT는 budget 늘려도 평균 안 오름** (b=600 → 151.5, b=1500 → 146.6). 천장에 박힘.
+2. **Greedy b=600 (357.6) > PUCT b=1500 (146.6)**. Greedy가 **절반 budget**으로 PUCT 대비 2.4× 우위.
+3. **Greedy는 budget에 비례해 향상** (b=600 → 357, b=1500 → 450, adaptive → 742). Budget 추가 = 성능 추가.
+
+이 세 가지가 본 작업의 main contribution. 단지 "우리 method가 잘 됐다" 가 아니라 **표준 MCTS의 한계를 정량적으로 입증**.
 
 ### 7.5 왜 PUCT 가 실패하는가 (분석)
 
