@@ -781,6 +781,97 @@ PYTHONUNBUFFERED=1 uv run python experiments/lookahead/puct.py
 3. `experiments/run_inning_sac.py` — `--setup_shaping`, `--setup_alpha`, `--setup_scale`, `--gradient_steps`, `--net_arch`, `--gamma`, `--buffer_size` CLI
 4. `experiments/lookahead/` — 모든 search 변종 (multi_seed_h2.py, puct.py 등)
 
+### D. Reward shaping 디테일 — gentle_shot 과 setup_shaping
+
+#### D.1 gentle_shot (병모)
+
+**발동 조건**: 득점 샷 직후 (`score > 0` 이고 `gentle_shot=True`).
+
+**의도**: 득점 후 큐 공이 **두 번째로 맞춘 빨간 공** 으로부터 너무 멀지도 가깝지도 않게 멈추면 보너스. 다음 샷에서 그 공을 다시 치기 좋은 거리.
+
+**수식**:
+
+```
+events 에서 cue_hit_red 만 추출 → 맞춘 순서대로 reds_hit 리스트
+target = reds_hit[1] (두 번째 맞춘 red)
+dist = ‖cue.position - target.position‖
+
+bonus = α · exp(-(dist - d_target)² / (2σ²))
+
+기본값:
+  α        = 0.2  (peak 보너스)
+  d_target = 0.2 m (이상적 거리)
+  σ        = 0.1 m (가우시안 폭)
+```
+
+**시각화**:
+
+```
+bonus
+0.2 |     ███
+    |   ██   ██
+    |  █       █
+    | █         █
+0.0 |█___________█___________
+    0   0.2     0.5    dist(m)
+        d_target
+```
+
+- dist = 0.2 m: peak 0.2 점
+- dist = 0.1 m 또는 0.3 m: 0.12 점
+- dist = 0 m (큐 공이 red 와 거의 붙음): 0.03 점
+- dist > 0.5 m: 거의 0
+
+**디자인 의도** (인간의 직관):
+- 너무 멀면 다음 샷 정밀도 ↓
+- 너무 가까우면 (접촉) 다음 샷 각도 매우 제한
+- ~0.2 m 가 sweet spot
+
+#### D.2 setup_shaping (우리)
+
+**발동 조건**: **매 비파울 샷마다** (sparse → dense 로 보완).
+
+**수식**:
+
+```
+cue 와 가장 가까운 red 간 거리:
+  d_min = min(‖cue - red1‖, ‖cue - red2‖)
+
+bonus = α · exp(-d_min / σ)
+
+기본값:
+  α = 0.05  (작게 — score=1 dominant 유지)
+  σ = 0.3 m
+```
+
+**의도와 차이**:
+- gentle_shot: 득점 직후 "두 번째 red 와 적당히 떨어진 거리" (Gaussian peak)
+- setup_shaping: 매 샷 후 "가장 가까운 red 와 가까울수록 좋음" (Exponential decay)
+
+#### D.3 두 보상의 비교
+
+| 측면 | gentle_shot | setup_shaping |
+|---|---|---|
+| 발동 시점 | 득점 샷 직후만 (sparse) | 매 비파울 샷 (dense) |
+| Target 거리 | 두 번째 맞춘 red (특정) | 가장 가까운 red (어느 쪽이든) |
+| 함수 모양 | Gaussian peak at d_target | Exponential decay (작을수록 좋음) |
+| α (크기) | 0.2 | 0.05 |
+| 한 이닝 누적 max | ~ 0.2 × 득점 횟수 | ~ 0.05 × 샷 수 |
+| 의도 | 득점 후 좋은 setup 격려 | 매 샷마다 적구 근처에 멈춰라 |
+| Exploit 위험 | 낮음 (득점 조건부) | 중간 (조심해서 α 작게) |
+
+#### D.4 우리가 발견한 함정
+
+`setup_shaping` 만으로 `random_start` 없이 학습하면 mean 0.17 로 붕괴 (정책이 "거의 닿지만 점수 안 내기" 위장 전략에 갇힘). `random_start` 와 함께 써야 robust (§4.4 참조).
+
+#### D.5 알려진 개선 여지
+
+1. **두 번째 red 만 고려 (gentle_shot)**: 두 빨간 공 중 *첫 번째* 가 더 좋은 setup 일 수도 있음. min 거리 쓰는 게 더 합리적.
+2. **각도 / line-of-sight 무시**: 거리만 봄. 큐 공-red 직선 위에 상대 큐가 있어 다음 샷이 막혀도 보너스. 가로막힘 확인 필요.
+3. **d_target 의 정당성**: hand-picked. 인간 expert 의 "이상적 거리" 통계로 정해진 게 아님. RLHF 로 학습 가능 (§8).
+4. **누적 보너스 vs score=1 dominant 성**: gentle_shot α=0.2 × 평균 4 득점 = 0.8 누적 vs score 4 점 → 20%. setup_shaping α=0.05 × 10 샷 = 0.5 vs score ~3.7 → 13%. 둘 다 score 가 dominant 하지만 무시할 수 없는 비중.
+5. **Potential-based shaping 으로 변환**: F = γφ(s') - φ(s) 로 바꾸면 최적 정책 불변 (Ng et al. 1999). 더 안전하지만 구현 복잡.
+
 ---
 
 **작성**: 2026-05-21
