@@ -140,15 +140,29 @@ PROJECT_OVERVIEW.md 의 "66.7%" 는 환경 / 코드 refactoring 이전 데이터
 
 #### Phase I (2026-05 초) — Random-start 시도
 
-같은 SAC 를 무작위 시작 위치로 학습:
+이번엔 같은 SAC 를 **시작 위치를 무작위로** 학습 시켰을 때 (매 reset 마다 4 공 위치가 랜덤). seed 0 만 학습 완료 (`experiments/runs_inning_random/sac_random_s0/summary.json`).
 
-| 평가 모드 | 평균 | 비고 |
-|---|---|---|
-| canonical (정해진 시작 위치) | **0%** | distribution shift 로 완전 실패 |
-| random (무작위 시작 위치) | **2.5%** (mean ≈ 0.025) | foul rate 19.5% |
+실험 setup:
+- env: `RandomStartInningEnv(Billiards4BallInningEnv(max_shots=50))` — 매 이닝 reset 시 4공 위치 랜덤화 (충돌 안 하는 valid placement)
+- 학습: 50k steps SAC
+- 평가: 두 가지 모드 각 200 episode (deterministic policy)
+  - **canonical eval**: 평가만 정해진 위치에서 (학습 분포 밖)
+  - **random eval**: 학습과 동일 random 분포에서
 
-- Random-start 학습한 정책이 canonical 에서 0% → **train/eval distribution mismatch** 노출
-- Random 분포 안에서도 mean 0.025 — 거의 random policy 수준
+| 평가 모드 | mean | max | p≥1 | mean_shots | foul rate |
+|---|---|---|---|---|---|
+| canonical (정해진 시작) | **0.0** | **0** | **0%** | 1.0 | 0% |
+| random (무작위 시작) | **0.025** | **1** | **2.5%** | 1.025 | **19.5%** |
+
+**해석**:
+- **Canonical eval = 0**: random-start 로 학습한 정책이 정해진 위치에서 한 점도 못 냄. **Train/eval distribution mismatch** 의 교과서적 사례 — 학습 분포가 평가 분포와 다르면 일반화 실패.
+- **Random eval = 0.025, max = 1**: 학습 분포에서도 거의 random policy 수준 (random policy 가 0.005). 200 episode 중 단 5 개만 (2.5%) 한 점 냄. 어떤 이닝도 2점 이상 못 냄.
+- **foul rate 19.5% 가 매우 높음**: random 시작은 종종 cue 공이 상대공 근처에 놓임 → foul 위험 ↑. Plain SAC 가 foul 회피 학습 못 함.
+- **mean_shots ≈ 1**: 거의 모든 이닝이 한 샷만에 종료 (miss/foul).
+
+**Phase I 의 의미**: Plain SAC 로는 random_start 학습도 안 됨. canonical 학습 시 max=1, random 학습 시 mean ≈ 0. **둘 다 실패.**
+
+→ 학습 방법 자체가 아니라 **환경 / 보상 / action constraint** 의 근본적 재설계가 필요함을 시사. 이 인사이트가 다음 단계 (병모의 `constrain_aim`) 로 이어짐.
 
 #### 내가 별도로 학습한 SAC 변종들 (Random eval, max_shots=20)
 
