@@ -239,16 +239,65 @@ bonus = α · exp(-(dist - d_target)² / (2σ²))
 
 #### (4) `foul_penalty` — 파울 음수 보상
 
-파울 (상대 큐 건드림) 시 reward 가 `+score - foul_penalty` 가 아닌 `-foul_penalty` (점수 무시):
+**한국식 4구 룰**: 자기 큐가 상대 큐를 건드리면 "파울". 그 샷은 무효, 차례 끝.
+
+**환경 reward 계산**:
 
 ```python
 if fouled:
-    reward = -self._foul_penalty   # default 0.1
+    reward = -self._foul_penalty   # 음수만 (default 0.1)
 else:
-    reward = float(score) + bonus(s)
+    reward = float(score)           # 0 또는 1
+    if score > 0 and gentle_shot:   # 득점 시 setup 보너스
+        reward += gentle_bonus
+    if setup_shaping:               # 매 비파울 샷 거리 보너스
+        reward += setup_bonus
 ```
 
-병모 default 0.1, 우리 best 0.2 (§3.2 sweep 으로 결정).
+**왜 그냥 0 안 되고 음수 (-penalty) 인가?**
+
+학습 모드에서 (`continue_on_miss=True`, max_shots=10 강제) 둘이 동시에 일어남:
+- 그냥 miss (공중에서 빗나감): reward 0
+- foul (상대 큐 건드림): reward 0 이면 → miss 와 foul 구분 못 함
+
+같은 결과 (점수 안 남) 라도 **foul 은 더 위험한 행동**. agent 가 "상대 큐 근처 비껴가는 위험한 샷" 을 거리낌없이 시도하면 안 됨. `-0.2` 페널티가 차이를 만듦:
+
+```
+miss → 0,   foul → -0.2   ← agent 가 foul 회피 학습
+```
+
+**`reward = score - foul_penalty` 와 뭐가 다른가?**
+
+실은 simulator 가 이미 다음을 보장:
+
+```python
+# simulator 내부:
+score  = 1 if (cue_hit_both_reds AND not fouled) else 0
+```
+
+→ fouled=True 면 score 는 자동으로 0. 동시에 score=1 + fouled=True 인 케이스 없음.
+
+따라서 수학적으로:
+- `reward = -foul_penalty`  →  0 - 0.2 = -0.2
+- `reward = score - foul_penalty`  →  0 - 0.2 = -0.2
+
+**같은 값.**
+
+**그래도 굳이 `if fouled:` 분기하는 이유 3가지**:
+
+1. **보너스 차단**: 정상 케이스에 `gentle_shot`, `setup_shaping` 보너스가 추가됨. foul 케이스에 그 보너스 적용하면 안 됨. 분기로 명확히 차단.
+2. **가독성**: 코드 읽는 사람이 "foul 시 reward = -penalty (only)" 룰을 한눈에 봄.
+3. **Future-proof**: simulator 규칙 변경 (예: "foul 이어도 점수 인정") 가능성 대비. simulator-reward decoupling.
+
+**페널티 값 sweep**:
+
+| fp | rnd mean | 비고 |
+|---|---|---|
+| 0.5 (병모 default) | 0.975 | 너무 강함, conservative 으로 학습 |
+| **0.2 (우리 best)** | **1.000** | sweet spot |
+| 0.1 | 0.875 | 너무 약함, foul rate 높아짐 |
+
+§3.2 의 sweep 으로 결정.
 
 #### 결과: SAC 200k step 학습
 
