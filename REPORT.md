@@ -589,6 +589,7 @@ RLHF 페이퍼의 표준 평가 매트릭스 4개:
 ## 11. 다음 단계
 
 ### 11.1 단기 (1-2주)
+- **깨끗한 ablation 재실험** (아래 §11.4) — 병모의 incremental 시리즈는 진정한 isolated ablation 이 아님. ICLR reviewer 반드시 지적할 부분.
 - **RLHF + search 통합** (Phase 6, 위 §8) — main contribution 강화
 - **n=50-100 으로 정밀 측정** — CI 좁히기
 - **Stochastic env variant** — env 에 noise 추가해서 PUCT vs greedy cross-over 측정
@@ -602,6 +603,60 @@ RLHF 페이퍼의 표준 평가 매트릭스 4개:
 - **Policy distillation** — search 결과를 single-forward 정책에 압축
 - **Model-based RL** — Dreamer 류로 시뮬레이터 학습
 - **Hierarchical policy** — 상위 (target 선택) + 하위 (실행) 분리
+
+### 11.4 미완료: 깨끗한 환경 변수 ablation
+
+병모가 추가한 환경 변경사항 (`constrain_aim`, `continue_on_miss`, `extra_features`, `random_start`, `gentle_shot`, `foul_penalty`) 의 각 marginal 효과를 isolated 으로 측정하지 못했음.
+
+#### 문제
+
+병모의 incremental 시리즈는 일부 step 에서 **여러 변수가 동시에 변경됨**:
+
+| run | constrain_aim | cont_on_miss | extra_features | random_start | gentle_shot | foul_penalty | steps | rnd mean |
+|---|---|---|---|---|---|---|---|---|
+| sac_s0 (baseline) | ❌ | ❌ | ❌ | ❌ | ❌ | 0.1 | 50k | 0.02 |
+| sac_aim_s0 | ✅ | ✅ | ❌ | ❌ | ❌ | 0.1 | 50k | 0.14 |
+| sac_feat_s0 | ✅ | ✅ | ✅ | ❌ | ❌ | 0.1 | 50k | 0.16 |
+| sac_rs_200k_s0 | ✅ | ✅ | ✅ | ✅ | ❌ | 0.1 | **200k** ↑ | 0.68 |
+| sac_gentle_200k_s0 | ✅ | ✅ | ✅ | ✅ | ✅ | **0.5** ↑ | 200k | 0.38 ↓ |
+
+**Confound 들**:
+1. `sac_aim_s0` 은 `constrain_aim` + `cont_on_miss` 둘 다 동시에 켜짐 → 각각의 효과 분리 불가
+2. `sac_rs_200k_s0` 은 `random_start` + **steps 50k → 200k (4×)** 같이 변경 → 어느 게 효과인지 모름
+3. `sac_gentle_200k_s0` 은 `gentle_shot` + **foul_penalty 0.1 → 0.5** 같이 변경 → mean 이 0.68 → 0.38 로 떨어진 게 어느 변수 탓인지 불명
+
+#### 필요한 깨끗한 ablation cells
+
+각 변수를 *하나씩만* 추가한 run 들을 학습해야 isolated effect 측정 가능:
+
+| Cell | 베이스 | 변경 | 측정 목표 |
+|---|---|---|---|
+| A0 | sac_s0 | (없음) | baseline |
+| A1 | sac_s0 | + constrain_aim only | constrain_aim marginal |
+| A2 | sac_s0 | + cont_on_miss only | cont_on_miss marginal |
+| A3 | sac_s0 | + constrain_aim + cont_on_miss | 둘 합쳤을 때 (병모의 sac_aim 재현) |
+| A4 | sac_feat_s0 | + random_start (steps 50k 유지!) | random_start marginal |
+| A5 | sac_feat_s0 | + steps 200k (random_start 없이) | steps 효과 분리 |
+| A6 | sac_rs_200k_s0 | + gentle_shot only (fp=0.1 유지) | gentle_shot marginal |
+| A7 | sac_rs_200k_s0 | + fp=0.5 only (gentle_shot 없이) | fp marginal |
+
+총 8 cells. 각 ~6-8분 (Tier A 적용 환경 기준) = **약 1 시간 wall** 로 완전한 isolated ablation 가능.
+
+#### 예상 시사점
+
+- A1 vs A2 vs A3: constrain_aim 만으로도 큰 효과인지, cont_on_miss 가 essential 인지 결정
+- A4 vs A5: 0.68 점프가 random_start 때문인지, 4× 학습 때문인지 결정
+- A6 vs A7: gentle_shot+fp=0.5 의 -0.30 drop 이 어느 변수 탓인지 결정 (아마 fp 가 너무 강한 게 문제로 예상되지만 검증 안 됨)
+
+#### ICLR 에 왜 필요한가
+
+Reviewer 가 반드시 물어볼 것: **"Each component 의 marginal contribution 은?"**
+
+현재 데이터로는 답이 불가능. 위 8 cells 만 추가 학습하면 깨끗한 contribution table 작성 가능.
+
+#### 우선순위
+
+본 보고서의 main contribution 은 search 부분 (Phase 4-5) 이므로 학습 ablation 의 미완성성은 main result 에 영향 없음. 하지만 ICLR submission 전 반드시 보완 필요. **단기 (1주) 우선순위 1번**.
 
 ---
 
