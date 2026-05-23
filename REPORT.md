@@ -66,22 +66,91 @@ AlphaGo / MuZero 와 같은 패턴: 학습된 정책은 prior, 진짜 결정은 
 
 ## 2. 출발점: 학습된 정책의 한계
 
-### 2.1 우리 받은 것 (병모 baseline)
+### 2.1 Plain SAC — 병모 개선 전 (Phase E ~ I)
 
-협업자 BrianKang-atKAIST 가 도입한 핵심 기법들:
+병모가 `constrain_aim` 등을 추가하기 전, 같은 환경에서 **단순 SAC** 만 돌렸을 때:
 
-- `constrain_aim`: 정책이 출력한 각도 θ 를 "가장 가까운 빨간 공 ±arcsin(2r/d) 콘" 으로 제한 → **첫 적구 접촉 보장**. 게임 체인저.
-- `random_start`: 매 이닝마다 공 위치 무작위 → 일반화 학습
-- `gentle_shot`: 득점 후 다음 샷 setup 보너스
+#### Phase H (2026-04) — 단일 시작 위치 (canonical) inning matrix
+
+| 알고리즘 | p≥1 (canonical) | max_inning | mean (≈) |
+|---|---|---|---|
+| Random policy | 0.5% | 1 | 0.005 |
+| PPO | 33.3% | 1 | 0.33 |
+| **SAC** | **66.7%** | **1** | **≈ 0.67** |
+
+- SAC 가 PPO 의 2배 강함 (off-policy + entropy 의 위력)
+- **하지만 max_inning = 1**: 한 점 내고 그 다음 샷에서 무조건 미스
+- 즉 "한 점만 내는 정책" 으로 빠르게 수렴. **Multi-shot 학습 안 됨.**
+
+#### Phase I (2026-05 초) — Random-start 시도
+
+같은 SAC 를 무작위 시작 위치로 학습:
+
+| 평가 모드 | 평균 | 비고 |
+|---|---|---|
+| canonical (정해진 시작 위치) | **0%** | distribution shift 로 완전 실패 |
+| random (무작위 시작 위치) | **2.5%** (mean ≈ 0.025) | foul rate 19.5% |
+
+- Random-start 학습한 정책이 canonical 에서 0% → **train/eval distribution mismatch** 노출
+- Random 분포 안에서도 mean 0.025 — 거의 random policy 수준
+
+#### 내가 별도로 학습한 SAC 변종들 (Random eval, max_shots=20)
+
+| 변종 (모두 plain SAC, no constrain_aim) | mean | max | canonical |
+|---|---|---|---|
+| sac_s0 (50k vanilla) | 0.02 | 1 | 0 |
+| sac_s0_1M (1M vanilla) | 0.04 | 1 | 0 |
+| sac_s0_1M_jit (jitter randomize) | 0.00 | 0 | 1 |
+| sac_s0_1M_jit_setup (best of mine) | 0.04 | 1 | 1 |
+
+전부 max = 0 또는 1. **Multi-shot 한 번도 안 나옴.**
+
+#### Phase H/I 의 결론
+
+**Plain SAC 의 천장**:
+- Canonical: mean ≈ 0.67, max = 1
+- Random: mean ≈ 0.025–0.04, max = 1
+
+이게 단순 SAC + inning env 의 한계였음. 더 길게 학습해도, 더 큰 네트워크로 해도, jitter 같은 randomization 을 추가해도 **max = 1** 의 벽을 못 넘음.
+
+### 2.2 게임 체인저: 병모의 `constrain_aim`
+
+협업자 BrianKang-atKAIST 가 다음을 추가:
+
+- **`constrain_aim`** (가장 critical): 정책이 출력한 각도 θ 를 "가장 가까운 빨간 공 ±arcsin(2r/d) 콘" 으로 제한 → **첫 적구 접촉을 기하학적으로 보장**.
+- `random_start`: 매 이닝마다 공 위치 무작위
+- `gentle_shot`: 득점 후 다음 샷 setup 가우시안 보너스
 - `foul_penalty`: 파울에 음수 보상
 
 이 위에서 SAC 200k step 학습:
 - 평균 0.575, 최대 4, P(≥3) = 14%
-- **드디어 multi-shot 정책 등장** (이전에는 max=1)
+- **드디어 multi-shot 정책 등장** (Phase H 의 max=1 천장을 처음으로 넘음)
 
-### 2.2 우리 목표
+`constrain_aim` 한 줄이 **mean 0.04 → 0.575, max 1 → 4**. 약 14× 점프. "허공 샷" 실패 모드를 제거한 게 결정적.
 
-이 위에서 더 push. 무한 chain.
+### 2.3 우리 목표
+
+병모의 출발점 (mean 0.575, max 4) 위에서 더 push. 궁극적 목표: 무한 chain.
+
+### 2.4 진화 한눈에 (병모 이전 → 우리 최종)
+
+```
+Phase H Plain SAC            random mean ~0.04, max 1   ← multi-shot 없음
+   │
+   │ + constrain_aim (병모)             [기하학적 첫 접촉 보장]
+   ▼
+병모 baseline                random mean 0.575, max 4    ← 첫 multi-shot
+   │
+   │ + setup_shaping + 800k + fp=0.2 (우리)
+   ▼
+SAC SOTA                     random mean 1.17, max 16    ← 학습 천장
+   │
+   │ + greedy K-expansion h=2 + multi-seed (우리)
+   ▼
+Search-augmented (최종)      random mean 741.8, max 2000+
+```
+
+각 단계마다 **10-100× 점프**. 누적 ≈ 18,500×.
 
 ---
 
