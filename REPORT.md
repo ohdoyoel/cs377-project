@@ -16,8 +16,8 @@
 ### 어디서 시작했는가?
 
 - 무작위 정책: 한 이닝 0.005점
-- 단순 SAC 강화학습: 한 이닝 0.67점 (한 점 내고 끝)
-- 협업자(병모)의 개선된 SAC: 한 이닝 0.575점 (드디어 multi-shot 등장)
+- 단순 SAC 강화학습 (canonical 시작): 한 이닝 1.0점 (100% 한 점만 내고 끝 — max=1)
+- 협업자(병모)의 개선된 SAC (random 시작): 한 이닝 0.575점 (드디어 multi-shot, max=4)
 
 ### 어디까지 갔는가?
 
@@ -72,15 +72,30 @@ AlphaGo / MuZero 와 같은 패턴: 학습된 정책은 prior, 진짜 결정은 
 
 #### Phase H (2026-04) — 단일 시작 위치 (canonical) inning matrix
 
-| 알고리즘 | p≥1 (canonical) | max_inning | mean (≈) |
-|---|---|---|---|
-| Random policy | 0.5% | 1 | 0.005 |
-| PPO | 33.3% | 1 | 0.33 |
-| **SAC** | **66.7%** | **1** | **≈ 0.67** |
+실험 setup:
+- 3 seeds (0, 1, 2) per algorithm
+- env: `Billiards4BallInningEnv(max_shots=50)`, **canonical 시작 위치** (정해진 4공 배치)
+- 학습: 50k steps, env reward (점수=1)
+- 평가: 200 episodes deterministic policy, 같은 canonical 시작에서
+- 결과 (`experiments/runs_inning/{algo}_s{0,1,2}/summary.json`):
 
-- SAC 가 PPO 의 2배 강함 (off-policy + entropy 의 위력)
-- **하지만 max_inning = 1**: 한 점 내고 그 다음 샷에서 무조건 미스
-- 즉 "한 점만 내는 정책" 으로 빠르게 수렴. **Multi-shot 학습 안 됨.**
+| 알고리즘 | p≥1 (3 seed 평균) | max_inning | mean | mean_shots |
+|---|---|---|---|---|
+| Random policy | 0.5% | 1 | 0.005 | - |
+| PPO (seeds 0,1,2) | **0%** | 0 | 0.0 | 1.0 |
+| **SAC (seeds 0,1,2)** | **100%** | **1** | **1.0** | **2.0** |
+
+→ SAC 3 seed **모두** 정확히 같은 결과 (p≥1=100%, mean=1.0, max=1, mean_shots=2). PPO 는 한 점도 못 냄.
+
+**SAC 가 mean=1.0 (max=1) 인 이유**:
+- Canonical 시작은 정해진 위치 → 정해진 "정답" 첫 샷 존재
+- SAC 가 50k step 안에 그 첫 샷을 memorize → 200 episode 다 같은 시작 → **100% 첫 샷 득점**
+- 그 직후 큐 공 굴러간 위치는 매번 다름 (random) → 두 번째 샷은 학습 안 됨 → 무조건 miss → 인닝 종료
+- **결과**: 정확히 1점 / 2샷 (1득점 + 1미스)
+
+**즉 "한 점만 내는 정책" 으로 robust 수렴.** Multi-shot 학습 안 됨 (max=1).
+
+PROJECT_OVERVIEW.md 의 "66.7%" 는 환경 / 코드 refactoring 이전 데이터로 추정. 현재 (병모의 env 개선 적용 후) 데이터는 3 seed 모두 100% 수렴.
 
 #### Phase I (2026-05 초) — Random-start 시도
 
@@ -108,8 +123,8 @@ AlphaGo / MuZero 와 같은 패턴: 학습된 정책은 prior, 진짜 결정은 
 #### Phase H/I 의 결론
 
 **Plain SAC 의 천장**:
-- Canonical: mean ≈ 0.67, max = 1
-- Random: mean ≈ 0.025–0.04, max = 1
+- Canonical (정해진 시작): mean = **1.0**, max = **1** (100% 한 점만 냄)
+- Random (무작위 시작): mean ≈ 0.025–0.04, max = 1
 
 이게 단순 SAC + inning env 의 한계였음. 더 길게 학습해도, 더 큰 네트워크로 해도, jitter 같은 randomization 을 추가해도 **max = 1** 의 벽을 못 넘음.
 
@@ -540,9 +555,9 @@ RLHF 페이퍼의 표준 평가 매트릭스 4개:
 | 단계 | 시점 | 평균 | 최대 | 비고 |
 |---|---|---|---|---|
 | Random policy | - | 0.005 | 1 | chance |
-| PPO baseline (Phase E) | 2026-04 | 0.33 | 1 | env reward only |
-| SAC inning (Phase H) | 2026-04 | 0.67 | 1 | "한 점 내고 끝" |
-| Random-start SAC (Phase I) | 2026-05 초 | 0.025 | ? | distribution shift |
+| PPO inning (Phase H, canonical, n=3 seeds) | 2026-04 | 0.0 | 0 | 한 점도 못 냄 |
+| SAC inning (Phase H, canonical, n=3 seeds) | 2026-04 | **1.0** | 1 | 정확히 1점/이닝 — "한 점 memorize" |
+| Random-start SAC (Phase I) | 2026-05 초 | 0.025 | 1 | distribution shift |
 | 병모 baseline | 2026-05 초 | 0.575 | 4 | constrain_aim 도입 |
 | Tier A (no shape) | 2026-05-19 | 0.570 | 6 | wall 2.3× ↓ |
 | + setup_shaping (200k) | 2026-05-19 | 0.885 | 9 | +54% |
