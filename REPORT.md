@@ -183,20 +183,79 @@ PROJECT_OVERVIEW.md 의 "66.7%" 는 환경 / 코드 refactoring 이전 데이터
 
 이게 단순 SAC + inning env 의 한계였음. 더 길게 학습해도, 더 큰 네트워크로 해도, jitter 같은 randomization 을 추가해도 **max = 1** 의 벽을 못 넘음.
 
-### 2.2 게임 체인저: 병모의 `constrain_aim`
+### 2.2 게임 체인저: 병모의 `constrain_aim` + 보상 / 분포 설계
 
-협업자 BrianKang-atKAIST 가 다음을 추가:
+협업자 BrianKang-atKAIST 가 다음 4가지를 추가:
 
-- **`constrain_aim`** (가장 critical): 정책이 출력한 각도 θ 를 "가장 가까운 빨간 공 ±arcsin(2r/d) 콘" 으로 제한 → **첫 적구 접촉을 기하학적으로 보장**.
-- `random_start`: 매 이닝마다 공 위치 무작위
-- `gentle_shot`: 득점 후 다음 샷 setup 가우시안 보너스
-- `foul_penalty`: 파울에 음수 보상
+#### (1) `constrain_aim` — **가장 critical**
 
-이 위에서 SAC 200k step 학습:
+정책이 출력한 각도 θ 를 단순 사용하지 않고, **가장 가까운 빨간 공 방향으로 정렬된 좁은 콘** 안으로 reparametrize:
+
+```
+cue 와 가장 가까운 red 의 방향: target_dir = atan2(red.y - cue.y, red.x - cue.x)
+cone 의 half-angle:           α = arcsin(2r / d)   (r = 공 반지름, d = cue-red 거리)
+
+정책이 출력한 θ ∈ [0, 2π] 를 [-1, 1] offset 으로 매핑:
+  offset = (θ - π) / π
+실제 적용된 각도:
+  θ_final = target_dir + offset · α     ← cone 의 ±α 안에 들어옴
+```
+
+**기하학적 의미**: arcsin(2r / d) 는 큐 공이 빨간 공 의 "각폭" — 이 콘 안의 어떤 각도로 쏘아도 첫 접촉이 빨간 공에 보장됨. cone 밖이면 미스 가능.
+
+→ "허공 샷" (어떤 공에도 안 닿음) 실패 모드 제거. **첫 적구 접촉 기하학적으로 보장.**
+
+원래 정책의 θ 자유도가 약 1/100 ~ 1/30 정도로 좁혀짐 (d 에 따라). 그만큼 학습이 쉬워짐 — 4D 액션 공간이 사실상 3D + bounded 1D 가 됨.
+
+#### (2) `random_start` — 일반화 강제
+
+매 이닝 reset 시 4공 위치를 무작위로 배치 (충돌 안 하는 valid placement). Plain SAC 가 canonical 단일 위치에서 "한 트릭" 만 memorize 한 Phase H 문제 해결.
+
+대신 학습 어려움 ↑: 정책이 어떤 시작 상태에서도 첫 샷 성공해야 함. Plain SAC 만으로는 처참 (§2.1 Phase I 데이터: random eval 2.5%).
+
+`constrain_aim` 과 결합되면 효과 큼 — 어느 위치에서든 콘 안의 θ 만 학습하면 되니까.
+
+#### (3) `gentle_shot` — 득점 후 setup 보너스
+
+**득점 샷 직후에만** 발동하는 가우시안 보너스. 큐 공이 *두 번째로 맞춘* 빨간 공으로부터 d_target ≈ 0.2 m 떨어진 위치에서 멈출 때 peak:
+
+```
+events 에서 cue_hit_red 만 추출 → reds_hit = [first, second, ...]
+target = reds_hit[1]   (두 번째 맞춘 red)
+dist   = ‖cue.position - target.position‖
+
+bonus = α · exp(-(dist - d_target)² / (2σ²))
+     α        = 0.2  (peak 크기)
+     d_target = 0.2 m (이상적 거리)
+     σ        = 0.1 m (가우시안 폭)
+```
+
+당구에서 "다음 샷 준비"의 미적 감각을 reward 로 인코딩:
+- dist = 0 m (cue 가 red 와 접촉): 다음 샷 각도 매우 제한 → bonus 0.03
+- **dist ≈ 0.2 m** (적당히 떨어짐): 다음 샷 치기 좋음 → bonus 0.2 (peak)
+- dist > 0.5 m (멀리 굴러감): 다음 샷 정밀도 어려움 → bonus ≈ 0
+
+자세한 디자인 분석은 **Appendix D**.
+
+#### (4) `foul_penalty` — 파울 음수 보상
+
+파울 (상대 큐 건드림) 시 reward 가 `+score - foul_penalty` 가 아닌 `-foul_penalty` (점수 무시):
+
+```python
+if fouled:
+    reward = -self._foul_penalty   # default 0.1
+else:
+    reward = float(score) + bonus(s)
+```
+
+병모 default 0.1, 우리 best 0.2 (§3.2 sweep 으로 결정).
+
+#### 결과: SAC 200k step 학습
+
 - 평균 0.575, 최대 4, P(≥3) = 14%
 - **드디어 multi-shot 정책 등장** (Phase H 의 max=1 천장을 처음으로 넘음)
 
-`constrain_aim` 한 줄이 **mean 0.04 → 0.575, max 1 → 4**. 약 14× 점프. "허공 샷" 실패 모드를 제거한 게 결정적.
+`constrain_aim` 의 마진 효과는 본 보고서에서 isolated 으로 측정 못 함 (§11.4 — 진정한 ablation 은 future work). 하지만 **plain SAC random eval = 0.04, +constrain_aim+cont_on_miss = 0.14, +extra+rs+200k+gentle = 0.575** 의 incremental data 만 봐도 약 **14× 점프** 가 이 단계에서 일어남. "허공 샷" 실패 모드 제거가 결정적 요인.
 
 ### 2.3 우리 목표
 
