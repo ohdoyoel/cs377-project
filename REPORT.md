@@ -70,6 +70,47 @@ AlphaGo / MuZero 와 같은 패턴: 학습된 정책은 prior, 진짜 결정은 
 
 병모가 `constrain_aim` 등을 추가하기 전, 같은 환경에서 **단순 SAC** 만 돌렸을 때:
 
+#### 잠깐 — PPO 와 SAC 가 무엇이고 어떻게 달랐나
+
+본 Phase H 에서는 두 표준 RL 알고리즘 PPO 와 SAC 를 동일 환경에서 비교했다.
+
+**PPO (Proximal Policy Optimization)** — *on-policy* 액터-크리틱:
+- 매 iteration: 현재 정책으로 N step rollout → 그 데이터로 한 번 (또는 몇 epoch) update → **데이터 버림**
+- "Proximal" = 새 정책이 옛 정책에서 너무 멀리 못 가게 ratio clip (trust region)
+- **Sample inefficient** 하지만 안정적. RL 의 "default" 선택지.
+
+**SAC (Soft Actor-Critic)** — *off-policy* 액터-크리틱 + *maximum entropy*:
+- 매 step: 환경 1 step → (s, a, r, s') 를 **replay buffer 에 저장** → buffer 에서 batch sample → Q-network + policy 업데이트
+- 보상 = 실제 보상 + α·entropy(π) → 정책이 "확실히" 수렴 안 하고 적당한 무작위성 유지 → **탐색 강함**
+- Twin Q networks (over-estimation 방지)
+- **Sample efficient**. Continuous action 에 강함.
+
+| 측면 | PPO | SAC |
+|---|---|---|
+| Policy update | On-policy | Off-policy |
+| 데이터 재사용 | ❌ 한 번 쓰고 버림 | ✅ Replay buffer |
+| Exploration | Stochastic policy + 작은 entropy bonus | Large entropy bonus |
+| Sample efficiency | 낮음 | 높음 |
+
+**우리 task 에서 SAC 가 압승한 이유**:
+1. **희소 보상 (sparse reward)**: 50k step 중 득점 transition 이 매우 드묾. SAC 는 그 rare transition 을 buffer 에서 계속 재사용. PPO 는 rollout 끝나면 버려서 정보 손실.
+2. **연속 액션 4D**: PPO 의 작은 entropy bonus 만으로는 4D 공간 탐색 부족. SAC 의 max-entropy 가 cover.
+3. **샷 비용 (5 ms / sim)**: transition 비싼 환경 → 재사용 가능한 SAC 유리.
+
+**학습 hyperparameter** (둘 다 50k step, 3 seeds):
+
+| 파라미터 | SAC | PPO |
+|---|---|---|
+| learning rate | 3e-4 | 3e-4 |
+| batch size | 256 | 64 (mini-batch) |
+| buffer size | 200,000 | n/a (on-policy) |
+| rollout per update | 1 (off-policy) | 2048 × 4 envs |
+| gamma | 0.99 | 0.99 |
+| update | 매 step 1번 | rollout 후 4 epoch |
+| learning_starts | 1,000 (random) | n/a |
+
+이제 Phase H 결과를 보자.
+
 #### Phase H (2026-04) — 단일 시작 위치 (canonical) inning matrix
 
 실험 setup:
