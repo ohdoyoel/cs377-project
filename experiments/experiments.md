@@ -28,6 +28,13 @@ CS377 한국식 4구 당구 RL 프로젝트의 학습/평가 실험 정리.
 | 2026-05-21 | **multi-seed h=2 lookahead** — infinite billiards mean 500+ (mean 741.8) 달성 |
 | 2026-05-22 | **PUCT vs greedy** 정량 비교 (n=10) |
 | 2026-05-26 | `time_reward` 추가 (빠른 득점 샷에 보너스) — 코드/테스트 완료, 학습은 미실행 *(현재 작업)* |
+| 2026-05-25 *(오도열)* | **Plain RL 재측정**: PPO/SAC 200k × 3 seeds, **no aim_constraint·shaping·gentle_shot·setup**, random_start만. — PPO 0.00 / SAC 0.015 (천장 확인) |
+| 2026-05-25 *(오도열)* | **Plain ablations**: `angle_sincos`(5D action, θ wrap 제거) + `extra_features` SAC 200k s0 → 0.010 (효과 없음). Curriculum start ramp(d=0→1) 200k s0 → 0.020 (easy mean 0.16, transfer 실패) |
+| 2026-05-25 *(오도열)* | **V(s) RM** (state-only scoring potential, MC over uniform K=100): v1 1k states r=0.466, v2 5k states r=0.869. SAC reward = score + λ·RM(s′), λ∈{10,50,100} → 모두 ≤0.020 (state-only 신호로는 actor가 못 따라옴) |
+| 2026-05-26 *(오도열)* | **V(s,a) RM** (state-action scoring potential): v2 500k pairs (5k×100, hidden 256), v3 10M pairs (50k×200, hidden 512). v3 Top-10 recall **30%** (uniform 0.6% → 50× lift) |
+| 2026-05-26 *(오도열)* | SAC + V(s,a) RM v2 λ∈{1,3,800k}/v3 λ∈{0.3,0.5,1} → peak **mean 0.060** (RM v2, λ=1). RM 강화가 SAC critic→actor의 indirect 경로에서 약해짐. **RM-as-reward 천장 확인** |
+| 2026-05-27 *(오도열)* | **RM-as-search-prior**: SAC actor 안 쓰고 RM v3로 K candidate scoring + simulator verify. h=1 K=500 M=50 → mean **1.90** (Plain의 127×). h=2 K1=2000 M1=200 K2=500 M2=20 → mean **46.10**, max 243. h=2 K1=5000 M1=500 K2=1000 M2=50 → **mean 658.90**, max 1231 *(8h wall, no SAC training)* |
+| 2026-05-27 *(오도열)* | **mean 1000+ 도전** *(진행 중)*: K1=10000 M1=1000 K2=2000 M2=100 launched |
 
 ---
 
@@ -152,3 +159,113 @@ v2 이전의 단일-env(non-vec) 탐색. 대부분 50k steps, max_shots 작음. 
 - **time_reward**: 빠르게 끝나는 득점 샷에 보너스. SAC는 현재 best(`fast_long_fp02_s4`)에서
   `--load_policy`로 fine-tune 예정(~100~150k steps, ~5분). Lookahead는 env reward 공유 →
   추론 시점 즉시 반영(스크립트의 `TIME_REWARD` 상수 toggle). policy.zip 확보가 선행 조건.
+
+---
+
+## 7. Plain-RL Ablation + Learned RM 라인 (2026-05-25~27, 오도열)
+
+*담당: 오도열.* NeurIPS 페이퍼 narrative (Plain RL → RM → Search → RLHF)를 위해
+**모든 hand-engineering 끔** 상태에서의 baseline과 그 위의 RM을 측정. 환경은
+`Billiards4BallInningEnv(t_max=12, max_shots=50)` + `RandomStartInningEnv`만.
+**`constrain_aim` / `setup_shaping` / `gentle_shot` / `extra_features` 전부 off**, reward는
+원래 룰의 `{0,1}` score만 (foul → 0, episode terminates on miss/foul).
+평가는 200 inning deterministic; max_shots는 표기.
+
+### 7.1 Plain RL Baseline (`experiments/runs_inning_random/`)
+| run | algo | steps | random eval mean | max | p1 | foul | wall |
+|---|---|---|---|---|---|---|---|
+| ppo_random_200k_s0/s1/s2 | PPO | 200k | **0.000** / 0.000 / 0.000 | 0 | 0% | 0% | ~95s |
+| sac_random_200k_s0/s1/s2 | SAC | 200k | 0.015 / 0.020 / 0.010 | 1~2 | 1.0~2.0% | 4~6% | 31~33min |
+
+**관찰**: 4D 연속 액션 + sparse $\{0,1\}$ reward 환경에서 두 baseline 모두 random policy(0.005) 수준.
+PPO는 on-policy + entropy bonus 부족으로 학습 신호 자체를 모음 불가. SAC는 replay buffer로 약간 우위.
+
+### 7.2 Plain SAC Ablation (action / obs / curriculum, 모두 seed 0)
+| run | 변경 | random mean | 비고 |
+|---|---|---|---|
+| sac_sincos_extra_200k_s0 | `angle_sincos`(5D act, θ wrap 제거) + `extra_features` | 0.010 | action wrap이 아니라 reward sparsity가 본질 |
+| sac_curriculum_200k_s0 | `CurriculumStartInningEnv`(easy→full ramp) | 0.020 (random) / 0.160 (d=0 easy) | easy 학습은 되지만 hard로 transfer 실패 |
+
+→ Plain SAC mean 천장 ≈ 0.02. **algorithm/parameterization/distribution 모두 reward sparsity의 본질적 한계 해결 못 함.**
+
+### 7.3 Learned Reward Model — Scoring Potential
+이 환경에서 score=1을 dense 신호로 바꾸는 방법으로 **scoring-potential** RM 학습.
+$V(s, a) = P(\text{score}=1 \mid s, a)$ 또는 $V(s) = \mathbb{E}_{a\sim\text{Unif}}[V(s,a)]$ 추정.
+
+#### 7.3.1 V(s) RM (`experiments/rm_data/`, `experiments/rm_data_v2/`)
+- v1: 1k random states × 100 uniform actions = 100k sims, MLP[28→128→128→1]+Sigmoid
+- v2: 5k × 100 = 500k sims, hidden 256, 500 epoch — Pearson r 0.466 → **0.869**
+- SAC reward = score + λ·RM(s'); λ ∈ {10, 50, 100}
+- 결과 (random eval, 200k step, seed 0):
+
+| RM | λ | mean | max | 비고 |
+|---|---|---|---|---|
+| v2 | 10 | 0.020 | 1 | canonical eval 0%, foul mode |
+| v2 | 50 | 0.005 | 1 | reward hacking 심화 |
+| v2 | 100 | 0.015 | 1 | canonical foul 100% |
+
+→ **state-only RM**으로는 actor가 high-V state로 가는 action 학습 못 함.
+
+#### 7.3.2 V(s,a) RM (`experiments/rm_data_vsa/`, `experiments/rm_data_vsa_v3/`)
+- v2: 5k × 100 = **500k pairs**, hidden 256, BCEWithLogits, 30 epoch
+- v3: 50k × 200 = **10M pairs**, hidden 512, 30 epoch (5h 28min wall)
+- v3 ranking quality:
+
+| RM | val_loss | mp_pos / mp_neg | Top-10 recall | Top-100 recall | Top-1000 recall |
+|---|---|---|---|---|---|
+| v2 | 0.032 | 0.024 / 0.005 | 10% | 9% | 5.2% |
+| v3 | 0.029 | 0.036 / 0.005 | **30%** | 12% | 7% |
+
+(random pos_rate = 0.62%; v3 Top-10이 random 대비 **48× lift**)
+
+#### 7.3.3 SAC + V(s,a) RM (`experiments/runs_inning_random/sac_vsarm_*`)
+| RM | λ | steps | random mean | max |
+|---|---|---|---|---|
+| v2 | 1 | 200k | **0.060** ← peak | 1 |
+| v2 | 3 | 200k | 0.045 | 2 |
+| v2 | 1 | 800k | 0.055 | 2 |
+| v3 | 0.3 | 200k | 0.010 | 1 |
+| v3 | 0.5 | 200k | 0.020 | 1 |
+| v3 | 1 | 200k | 0.030 | 1 |
+
+**결정적 관찰**: RM 정확도(v2 9% → v3 30%)가 3× 향상돼도 SAC가 reward channel로 받을 때는 mean 더 안 좋아짐.
+- Actor는 Gaussian 1개를 뱉음; RM landscape는 매우 peaked
+- entropy bonus가 peak에서 멀어지게 함
+- RM bias가 reward gradient에 reward hacking 유도
+
+→ **RM은 reward로 쓰면 약함, search scorer로 쓰면 강함**.
+
+### 7.4 RM-as-Search-Prior (`experiments/lookahead/rm_only_*.py`)
+SAC actor 안 쓰고, **uniform random action 후보 K개 → RM v3 ranking → top-M → simulator verify**.
+완전한 training-free pipeline.
+
+#### h=1 (1-step lookahead, max_shots=50, n=10 ep)
+| K (candidates) | M (verify) | mean | max | p1 | wall/ep |
+|---|---|---|---|---|---|
+| 100 | 10 | 0.20 | 1 | 20% | 50ms |
+| 100 | 100 (=pure sim) | 0.40 | 2 | 20% | 340ms |
+| 500 | 50 | **1.90** | 5 | 60% | 650ms |
+
+→ K=500 M=50 만으로 Plain SAC(0.015)의 **127×**.
+
+#### h=2 (2-step lookahead, max_shots=200~2000, n=10 ep, γ=0.99)
+| K1 | M1 | K2 | M2 | max_shots | mean | max | p10 | wall/ep |
+|---|---|---|---|---|---|---|---|---|
+| 100 | 10 | 10 | 5 | 200 | 0.20 | 1 | 0% | ~50ms |
+| 500 | 50 | 100 | 5 | 200 | 2.40 | 6 | 0% | 1s |
+| 1000 | 100 | 100 | 10 | 500 | 4.90 | 36 | 10% | 5s |
+| 2000 | 200 | 500 | 20 | 500 | **46.10** | 243 | **80%** | ~50s |
+| 5000 | 500 | 1000 | 50 | 2000 | **658.90** | 1231 | **90%** | ~50min |
+| 10000 | 1000 | 2000 | 100 | 2000 | *(진행 중, ~16-24h ETA)* | | | |
+
+K1=5000 M1=500: scores = `[498, 1231, 0, 733, 753, 786, 508, 976, 783, 321]`, 8h 16min wall.
+9/10 ep mean 700+ (1개 outlier score=0). REPORT.md의 SAC+full-system 결과(741)와 동급 수준을
+**SAC 학습 0회 + RM만으로** 달성. 다만 단일 RM이라 candidate distribution이 uniform로 한계 존재.
+
+### 7.5 코드/파일
+- 신규 wrapper: `billiards/wrappers/{curriculum_start_env, scoring_potential_rm_env, vsa_rm_env}.py`
+- 신규 train: `experiments/{run_inning_curriculum, run_inning_sacrm, run_inning_sacrm_sa}.py`
+- RM build: `experiments/{build_scoring_potential_rm, build_v_sa_rm}.py` (tqdm 적용)
+- Search: `experiments/lookahead/{rm_only_search, rm_only_h2}.py`
+- `inning_env.py` 변경: `angle_sincos` option (5D action) 추가
+- 의존성 추가: `tqdm`, `rich`
