@@ -35,6 +35,13 @@ from billiards.inning_env import Billiards4BallInningEnv
 from billiards.wrappers.random_start_env import RandomStartInningEnv
 from stable_baselines3 import SAC
 
+# Time bonus on scoring shots (faster shots rank higher). Must match the env
+# config the policy was tuned against; applied immediately at candidate-ranking
+# time (no retraining). Set TIME_REWARD=False to recover the old behavior.
+TIME_REWARD = True
+TIME_ALPHA = 0.2
+TIME_SCALE = 3.0
+
 
 # ---- Node ----------------------------------------------------------------
 
@@ -242,6 +249,7 @@ def make_env(max_shots: int):
         constrain_aim=True, extra_features=True,
         foul_penalty=0.2, gentle_shot=True,
         setup_shaping=True, setup_alpha=0.05, setup_scale=0.3,
+        time_reward=TIME_REWARD, time_alpha=TIME_ALPHA, time_scale=TIME_SCALE,
     )
     env = RandomStartInningEnv(base)
     return base, env

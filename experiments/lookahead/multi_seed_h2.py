@@ -24,6 +24,13 @@ POLICIES = [
 OUT_HTML = REPO / "artifacts/best_inning"
 GAMMA = 0.99
 
+# Time bonus on scoring shots (faster shots rank higher). Must match the env
+# config the policy was tuned against; applied immediately at candidate-ranking
+# time (no retraining). Set TIME_REWARD=False to recover the old behavior.
+TIME_REWARD = True
+TIME_ALPHA = 0.2
+TIME_SCALE = 3.0
+
 
 def K_schedule(shot_idx):
     """Per-policy K. Total = K * len(POLICIES)."""
@@ -78,6 +85,7 @@ def multi_seed_eval(models, n_eps, K2=5, max_shots=2000):
             constrain_aim=True, extra_features=True,
             foul_penalty=0.2, gentle_shot=True,
             setup_shaping=True, setup_alpha=0.05, setup_scale=0.3,
+            time_reward=TIME_REWARD, time_alpha=TIME_ALPHA, time_scale=TIME_SCALE,
         )
         env = RandomStartInningEnv(base)
         obs, _ = env.reset(seed=99000 + ep)

@@ -27,7 +27,8 @@ CS377 한국식 4구 당구 RL 프로젝트의 학습/평가 실험 정리.
 | 2026-05-20 | env·sim 개선(lean info dict, dt_max 0.05→0.1, `setup_shaping`, snap-to-rest) / 학습 바이너리 untrack / **v2 run 메타데이터** 추가 |
 | 2026-05-21 | **multi-seed h=2 lookahead** — infinite billiards mean 500+ (mean 741.8) 달성 |
 | 2026-05-22 | **PUCT vs greedy** 정량 비교 (n=10) |
-| 2026-05-26 | `time_reward` 추가 (빠른 득점 샷에 보너스) — 코드/테스트 완료, 학습은 미실행 *(현재 작업)* |
+| 2026-05-26 | `time_reward` 추가 (빠른 득점 샷에 보너스) — 코드/테스트 완료, 학습은 미실행 |
+| 2026-05-27 | `time_reward` 앙상블 fine-tune(s1/s4/s6) 실행 + 시간예산 eval(`eval_time_budget.py`) 추가 *(현재 작업)* |
 
 ---
 
@@ -82,6 +83,42 @@ CS377 한국식 4구 당구 RL 프로젝트의 학습/평가 실험 정리.
 - 큰 네트워크(400,300 / 512,256,128)는 256,256 기본보다 나을 것 없었음.
 - seed 의존성 존재(long_fp02: s0 4.50 ~ s4 5.69).
 
+### 1.5 time_reward fine-tune (앙상블 s1/s4/s6, 2026-05-27)
+
+`fast_long_fp02_s{1,4,6}` 800k 정책을 각각 `--load_policy`로 warm-start 후
+`--time_reward`(time_alpha=0.2, time_scale=3.0)만 추가해 150k step fine-tune
+(나머지 flag 동일, 각 ~5분). 결과는 `experiments/runs_inning_v2/fast_time_fp02_s{1,4,6}/`.
+목적은 lookahead 앙상블(s1+s4+s6) 전체를 동일 shaping으로 옮겨 inference 비교를 공정히 하기 위함.
+
+**표준 eval** (time_reward 적용 전→후, max_shots=10, 100 innings):
+
+| seed | mean | foul% | mean_cushions |
+|---|---|---|---|
+| s1 | 5.10 → **5.61** | 52 → **48** | 1.182 → **1.099** |
+| s4 | 5.69 → **5.82** | 51 → **44** | 1.085 → **0.863** |
+| s6 | 5.21 → **5.49** | 54 → **67** ⚠️ | 1.544 → **1.259** |
+
+→ 세 seed 모두 mean↑, mean_cushions↓(샷이 더 직접적·짧아짐 = time_reward 의도대로).
+foul은 s1/s4 개선, **s6만 악화**(seed 의존 이상치).
+
+### 1.6 시간예산 eval (`eval_time_budget.py`, 신규)
+
+기존 eval은 *이닝당 점수*(miss 시 종료, max_shots 캡)라 "빠른 득점"의 시간 효율을 못 잡음.
+신규 eval은 **고정 시뮬시간 예산** 안에서 이닝을 연속 플레이(miss/foul→이닝 종료→랜덤 위치 재시작)하며
+점수를 누적, **누적점수 vs 시뮬시간 곡선**을 n_repeats 평균으로 기록. 단위 시간당 득점을 직접 측정.
+
+결과(budget=120s, n_repeats=30, score@120s, ±std): `experiments/artifacts/time_budget/ensemble_compare/`
+(곡선 CSV + `comparison.png`).
+
+| seed | non-time | time |
+|---|---|---|
+| s1 | 12.63 ± 3.25 | **12.77 ± 4.59** |
+| s4 | 14.23 ± 4.75 | **14.50 ± 3.13** |
+| s6 | 12.97 ± 3.69 | **13.47 ± 2.84** |
+
+→ 세 seed 모두 time 정책이 시간당 득점 소폭 우위(+0.14/+0.27/+0.50)나 **std 밴드 내** —
+n=30에선 약한 효과. 표준 eval의 cushions↓와 방향은 일치(직접적 샷이 시간 예산을 덜 소모).
+
 ---
 
 ## 2. Lookahead (추론 시점 탐색, `experiments/lookahead/`)
@@ -98,7 +135,31 @@ CS377 한국식 4구 당구 RL 프로젝트의 학습/평가 실험 정리.
 | `puct.py` | PUCT MCTS (uniform/policy/multi_seed) | — | greedy와 정량 비교(2026-05-22) |
 
 공통 env 설정: `constrain_aim, extra_features, foul_penalty=0.2, gentle_shot, setup_shaping(0.05/0.3)`.
-*(주의: 스크립트 상단 `REPO` 경로가 다른 머신 절대경로로 하드코딩 — 이 머신에서 돌리려면 수정 필요.)*
+*(주의: 위 4개 스크립트 상단 `REPO` 경로가 다른 머신 절대경로로 하드코딩 — 이 머신에서 돌리려면 수정 필요.
+신규 `compare_time_proposers.py`는 `Path(__file__).parents[2]`로 REPO 자동탐지.)*
+
+### 2.1 time effect 분해: ranking vs proposer (`compare_time_proposers.py`, 2026-05-27)
+
+질문: lookahead에서 time_reward가 시간 효율에 기여한다면 그게 (a) 후보 **랭킹**의 time bonus
+때문인가, (b) §1.5 time-fine-tune 정책을 **proposer**로 써서인가? 3조건 paired 비교로 분해.
+셋업: h=2 multi-seed(s1,s4,s6), paired seeds, n=12, max_shots=25, k1=100(per-policy), k2=3.
+
+| variant | proposer | 랭킹 time | score/sim_s | mean_sim_t | mean_score |
+|---|---|---|---|---|---|
+| true_baseline | 비-time | off | 0.255 | 88.6s | 22.92 |
+| baseline | 비-time | **on** | **0.282** | 81.2s | 22.92 |
+| time | **time** | on | 0.284 | 80.7s | 22.92 |
+
+**분해 (score/sim_s):** 랭킹 효과 = **+0.027** (true_baseline→baseline, ~+11%) ·
+proposer 효과 = **+0.002** (baseline→time, noise 내).
+→ lookahead에서 time_reward의 시간 효율 이득은 **거의 전부 랭킹 `TIME_REWARD` 토글**에서 나오고,
+proposer를 time 정책으로 바꾸는 건 무의미. 랭킹 bonus를 켜면 cap 도달 sim_time이 88.6→81.2s로
+~7.4s 단축(점당 더 빠른 샷 선택). 즉 **lookahead엔 time 정책 불필요, 랭킹만 켜면 됨.**
+(§1.6 단독 정책 eval에선 fine-tune이 효과 있었으나, lookahead는 search가 그 역할을 대신.)
+
+*Caveat:* max_shots=25 cap 탓에 raw mean_score는 세 조건 모두 22.92로 saturate — 구분은
+sim_time/score-per-sim-s에서만(11/12 ep가 cap 도달, seed 99000만 첫 샷 miss, paired 동일).
+체이닝 길이 차이까지 보려면 cap↑(훨씬 느림). 결과: `experiments/artifacts/lookahead_time_ab/ab_summary.json`.
 
 ---
 
@@ -137,7 +198,7 @@ v2 이전의 단일-env(non-vec) 탐색. 대부분 50k steps, max_shots 작음. 
 | `--setup_shaping` | 매 non-foul 샷마다 `setup_alpha·exp(−d_min/setup_scale)` | on (baseline/g2 제외) |
 | `--setup_alpha` | setup_shaping 크기 | 0.05 / 0.1 |
 | `--setup_scale` | setup_shaping 거리 스케일(m) | 0.3 / 0.15(sharp) |
-| `--time_reward` *(신규)* | 득점 샷에 `time_alpha·exp(−duration/time_scale)` (빠를수록 ↑) | (미실행) |
+| `--time_reward` | 득점 샷에 `time_alpha·exp(−duration/time_scale)` (빠를수록 ↑) | on (fast_time_fp02_s{1,4,6}) |
 | `--time_alpha` / `--time_scale` | time_reward 크기 / 시간 스케일 | 기본 0.2 / 3.0 |
 | `--n_envs` | 병렬 env(SubprocVecEnv) | 8 |
 | `--gradient_steps` | env step당 그라디언트 스텝 | 2 |
@@ -148,7 +209,12 @@ v2 이전의 단일-env(non-vec) 탐색. 대부분 50k steps, max_shots 작음. 
 
 ---
 
-## 6. 진행 중 / 다음 (2026-05-26~)
-- **time_reward**: 빠르게 끝나는 득점 샷에 보너스. SAC는 현재 best(`fast_long_fp02_s4`)에서
-  `--load_policy`로 fine-tune 예정(~100~150k steps, ~5분). Lookahead는 env reward 공유 →
-  추론 시점 즉시 반영(스크립트의 `TIME_REWARD` 상수 toggle). policy.zip 확보가 선행 조건.
+## 6. 진행 중 / 다음 (2026-05-27~)
+- **time_reward 앙상블 fine-tune** ✅ (§1.5): s1/s4/s6 모두 150k step fine-tune 완료.
+  표준 eval에서 mean↑·cushions↓ 확인. 시간예산 eval(§1.6)에선 time 정책이 소폭 우위지만
+  n=30 std 내 → 효과 약함. 다음: n_repeats↑ 또는 budget↑로 유의성 재확인, time_alpha sweep 검토.
+- **s6 foul 악화**: time_reward 후 s6만 foul 54→67%. seed 단위 재현/원인 확인 필요.
+- **lookahead time effect 분해** ✅ (§2.1): 3조건(true_baseline/baseline/time) paired 비교로
+  ranking vs proposer 기여 분리. 시간 효율(score/sim_s) 이득은 거의 전부 **랭킹 `TIME_REWARD`
+  토글**(+0.027), proposer 교체는 무의미(+0.002). → lookahead엔 time 정책 불필요, 랭킹만 켜면 됨.
+  다음(선택): max_shots cap↑로 체이닝 길이 차이 확인, time_alpha sweep.

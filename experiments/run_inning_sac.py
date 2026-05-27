@@ -122,6 +122,9 @@ def _env_factory(
     setup_shaping: bool = False,
     setup_alpha: float = 0.05,
     setup_scale: float = 0.3,
+    time_reward: bool = False,
+    time_alpha: float = 0.2,
+    time_scale: float = 3.0,
 ):
     """Build a thunk that constructs one Monitor-wrapped env. Used by both
     DummyVecEnv (n_envs=1) and SubprocVecEnv (n_envs>1)."""
@@ -138,6 +141,9 @@ def _env_factory(
             setup_shaping=setup_shaping,
             setup_alpha=setup_alpha,
             setup_scale=setup_scale,
+            time_reward=time_reward,
+            time_alpha=time_alpha,
+            time_scale=time_scale,
         )
         if random_start:
             env = RandomStartInningEnv(env)
@@ -160,6 +166,9 @@ def _make_train_env(
     setup_shaping: bool = False,
     setup_alpha: float = 0.05,
     setup_scale: float = 0.3,
+    time_reward: bool = False,
+    time_alpha: float = 0.2,
+    time_scale: float = 3.0,
     n_envs: int = 1,
 ):
     """Vectorized training env. Uses SubprocVecEnv when n_envs>1 so multiple
@@ -179,6 +188,9 @@ def _make_train_env(
             setup_shaping=setup_shaping,
             setup_alpha=setup_alpha,
             setup_scale=setup_scale,
+            time_reward=time_reward,
+            time_alpha=time_alpha,
+            time_scale=time_scale,
         )
         for i in range(n_envs)
     ]
@@ -404,6 +416,14 @@ def main() -> None:
     parser.add_argument("--setup_alpha", type=float, default=0.05)
     parser.add_argument("--setup_scale", type=float, default=0.3)
     parser.add_argument(
+        "--time_reward",
+        action="store_true",
+        help="Add time bonus time_alpha*exp(-duration/time_scale) on non-foul "
+             "scoring shots: faster shots (shorter ball travel) score higher.",
+    )
+    parser.add_argument("--time_alpha", type=float, default=0.2)
+    parser.add_argument("--time_scale", type=float, default=3.0)
+    parser.add_argument(
         "--n_envs",
         type=int,
         default=1,
@@ -453,6 +473,9 @@ def main() -> None:
             "setup_shaping": bool(args.setup_shaping),
             "setup_alpha": float(args.setup_alpha),
             "setup_scale": float(args.setup_scale),
+            "time_reward": bool(args.time_reward),
+            "time_alpha": float(args.time_alpha),
+            "time_scale": float(args.time_scale),
             "n_envs": int(args.n_envs),
             "gradient_steps": int(args.gradient_steps),
             "net_arch": str(args.net_arch),
@@ -497,6 +520,7 @@ def main() -> None:
               f"random_start={args.random_start} "
               f"foul_penalty={args.foul_penalty} "
               f"gentle_shot={args.gentle_shot} "
+              f"time_reward={args.time_reward} "
               f"n_envs={args.n_envs} "
               f"load_policy={args.load_policy} "
               f"out_dir={out_dir}")
@@ -515,6 +539,9 @@ def main() -> None:
             setup_shaping=bool(args.setup_shaping),
             setup_alpha=float(args.setup_alpha),
             setup_scale=float(args.setup_scale),
+            time_reward=bool(args.time_reward),
+            time_alpha=float(args.time_alpha),
+            time_scale=float(args.time_scale),
             n_envs=int(args.n_envs),
         )
 

@@ -71,6 +71,9 @@ class Billiards4BallInningEnv(gym.Env):
         setup_shaping: bool = False,
         setup_alpha: float = 0.05,
         setup_scale: float = 0.3,
+        time_reward: bool = False,
+        time_alpha: float = 0.2,
+        time_scale: float = 3.0,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
@@ -115,6 +118,14 @@ class Billiards4BallInningEnv(gym.Env):
         self._setup_shaping = bool(setup_shaping)
         self._setup_alpha = float(setup_alpha)
         self._setup_scale = float(setup_scale)
+        # Time bonus on scoring shots: faster shots (shorter simulated ball
+        # travel before rest) earn time_alpha*exp(-duration/time_scale) on top
+        # of the +1 score. Only applied on non-foul scoring shots so the policy
+        # is never rewarded for a quick miss; keep time_alpha < 1 so the integer
+        # score still dominates and a slow score always beats a fast miss.
+        self._time_reward = bool(time_reward)
+        self._time_alpha = float(time_alpha)
+        self._time_scale = float(time_scale)
         obs_dim = OBS_DIM + (EXTRA_FEATURE_DIM if self._extra_features else 0)
 
         self.observation_space = gym.spaces.Box(
@@ -309,6 +320,10 @@ class Billiards4BallInningEnv(gym.Env):
             reward = float(score)
             if score > 0 and self._gentle_shot:
                 reward += self._calc_gentle_reward(result["events"])
+            if score > 0 and self._time_reward:
+                reward += self._time_alpha * float(
+                    np.exp(-float(result["duration"]) / self._time_scale)
+                )
             if self._setup_shaping:
                 cue = self._state.balls[self._cue_id]
                 r1 = self._state.balls[int(BallRole.RED_1)]

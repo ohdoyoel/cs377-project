@@ -111,6 +111,66 @@ def test_max_shots_truncates(monkeypatch):
     assert info["cumulative_score"] == 2
 
 
+def _stub_shot(monkeypatch, *, score: int, duration: float, fouled: bool = False):
+    """Patch simulate_shot to return a fixed score/duration/foul deterministically."""
+    from billiards import inning_env as ie_module
+
+    def fake_simulate_shot(state, action, t_max=12.0):
+        state.t = duration
+        return {
+            "trajectory": [(0.0, state.to_array())],
+            "events": [],
+            "score": score,
+            "fouled": fouled,
+            "cushion_hits": 0,
+            "duration": duration,
+        }
+
+    monkeypatch.setattr(ie_module, "simulate_shot", fake_simulate_shot)
+
+
+def test_time_reward_bonus_on_scoring_shot(monkeypatch):
+    env = Billiards4BallInningEnv(
+        continue_on_miss=True, time_reward=True, time_alpha=0.2, time_scale=3.0,
+    )
+    env.reset()
+    _stub_shot(monkeypatch, score=1, duration=1.0)
+    _, reward, _, _, _ = env.step(SCORING_ACTION)
+    assert reward == pytest.approx(1.0 + 0.2 * math.exp(-1.0 / 3.0))
+
+
+def test_time_reward_faster_shot_scores_higher(monkeypatch):
+    env = Billiards4BallInningEnv(
+        continue_on_miss=True, time_reward=True, time_alpha=0.2, time_scale=3.0,
+    )
+    env.reset()
+    _stub_shot(monkeypatch, score=1, duration=0.5)
+    _, fast_reward, _, _, _ = env.step(SCORING_ACTION)
+    _stub_shot(monkeypatch, score=1, duration=4.0)
+    _, slow_reward, _, _, _ = env.step(SCORING_ACTION)
+    assert fast_reward > slow_reward
+    # A fast score must still beat a (hypothetical) miss: bonus stays < 1.
+    assert fast_reward < 2.0
+
+
+def test_time_reward_not_applied_on_miss(monkeypatch):
+    env = Billiards4BallInningEnv(
+        continue_on_miss=True, time_reward=True, time_alpha=0.2, time_scale=3.0,
+    )
+    env.reset()
+    _stub_shot(monkeypatch, score=0, duration=0.5)
+    _, reward, _, _, _ = env.step(MISS_ACTION)
+    assert reward == 0.0
+
+
+def test_time_reward_off_by_default(monkeypatch):
+    env = Billiards4BallInningEnv(continue_on_miss=True)
+    env.reset()
+    _stub_shot(monkeypatch, score=1, duration=0.5)
+    _, reward, _, _, _ = env.step(SCORING_ACTION)
+    assert reward == 1.0
+
+
 def test_full_trajectory_continuous():
     env = Billiards4BallInningEnv()
     env.reset()
