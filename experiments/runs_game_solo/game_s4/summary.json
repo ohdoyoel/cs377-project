@@ -1,0 +1,16 @@
+{
+  "seed": 4,
+  "budget_s": 120.0,
+  "train_wall_s": 346.6396744999802,
+  "eval_wall_s": 3.4347022000001743,
+  "wall_s": 353.5174563000037,
+  "mean_game_score": 15.24,
+  "std_game_score": 3.0274930694741955,
+  "max_game_score": 22,
+  "mean_innings": 13.22,
+  "mean_shots": 27.86,
+  "mean_sim_time_s": 122.67273703146668,
+  "score_per_sim_s": 0.12423298255822564,
+  "mean_cushions": 1.0965573126745543,
+  "foul_rate": 0.07881612563681528
+}

@@ -28,7 +28,9 @@ CS377 한국식 4구 당구 RL 프로젝트의 학습/평가 실험 정리.
 | 2026-05-21 | **multi-seed h=2 lookahead** — infinite billiards mean 500+ (mean 741.8) 달성 |
 | 2026-05-22 | **PUCT vs greedy** 정량 비교 (n=10) |
 | 2026-05-26 | `time_reward` 추가 (빠른 득점 샷에 보너스) — 코드/테스트 완료, 학습은 미실행 |
-| 2026-05-27 | `time_reward` 앙상블 fine-tune(s1/s4/s6) 실행 + 시간예산 eval(`eval_time_budget.py`) 추가 *(현재 작업)* |
+| 2026-05-27 | `time_reward` 앙상블 fine-tune(s1/s4/s6) 실행 + 시간예산 eval(`eval_time_budget.py`) 추가 |
+| 2026-05-28 | **TimeBudgetGameEnv game_solo** (s1/s4/s6, 150k fine-tune) — game mean↑·foul↓·std↓ 전 seed 확인 |
+| 2026-05-28 | **lookahead game_solo proposer eval** — inning lookahead에선 game_solo proposer가 baseline보다 나쁨(miss-tolerance 불일치) |
 
 ---
 
@@ -119,6 +121,37 @@ foul은 s1/s4 개선, **s6만 악화**(seed 의존 이상치).
 → 세 seed 모두 time 정책이 시간당 득점 소폭 우위(+0.14/+0.27/+0.50)나 **std 밴드 내** —
 n=30에선 약한 효과. 표준 eval의 cushions↓와 방향은 일치(직접적 샷이 시간 예산을 덜 소모).
 
+### 1.7 TimeBudgetGameEnv game_solo (2026-05-28)
+
+`fast_long_fp02_s{1,4,6}` (비-time SOTA) warm-start 후 `TimeBudgetGameEnv`(budget_s=120)로
+150k step fine-tune. `foul_penalty=1.0`(inning의 0.2보다 강함 — 이닝 종료+위치 손실 구조와 결합),
+나머지 flag 동일(`constrain_aim + extra_features + gentle_shot + setup_shaping`).
+결과: `experiments/runs_game_solo/game_s{1,4,6}/`. eval은 shaping 없는 clean env, 50 games.
+
+**game_solo eval 결과 (budget=120s, n=50 games):**
+
+| seed | mean_game_score | std | max | mean_innings | score/sim_s | foul_rate | cushions |
+|---|---|---|---|---|---|---|---|
+| s1 | **13.80** | 2.46 | 19 | 13.86 | 0.113 | **9.3%** | 1.234 |
+| s4 | **15.24** | 3.03 | 22 | 13.22 | 0.124 | **7.9%** | 1.097 |
+| s6 | **13.46** | 2.53 | 19 | 14.10 | 0.110 | **9.6%** | 1.185 |
+
+**§1.6 eval_time_budget 기준선(비-time 정책, n=30) 대비 game_solo 개선:**
+
+| seed | 기준선 mean±std | game_solo mean±std | Δmean | Δstd |
+|---|---|---|---|---|
+| s1 | 12.63 ± 3.25 | **13.80 ± 2.46** | **+1.17** | −0.79 |
+| s4 | 14.23 ± 4.75 | **15.24 ± 3.03** | **+1.01** | −1.72 |
+| s6 | 12.97 ± 3.69 | **13.46 ± 2.53** | **+0.49** | −1.16 |
+
+**관찰:**
+- 세 seed 모두 mean↑·std↓: game 목적 fine-tune이 scoring throughput + 안정성 동시 향상.
+- foul_rate 극적 하락: inning env 46~70% → game_solo 7.9~9.6%. `foul_penalty=1.0`(강한 패널티)
+  + 게임 구조(foul 시 이닝 종료, 위치 손실) 결합 효과. time_reward fine-tune(§1.5)의 foul 개선보다
+  훨씬 큰 폭.
+- cushion_hits↓: inning eval의 fast_long 1.1~1.5에서 game_solo 1.1~1.2로 소폭 감소 — 더 직접적인 샷.
+- s4 SOTA 유지(15.24/22): inning SOTA(5.69/10 shots)와 일관된 seed 우위.
+
 ---
 
 ## 2. Lookahead (추론 시점 탐색, `experiments/lookahead/`)
@@ -160,6 +193,32 @@ proposer를 time 정책으로 바꾸는 건 무의미. 랭킹 bonus를 켜면 ca
 *Caveat:* max_shots=25 cap 탓에 raw mean_score는 세 조건 모두 22.92로 saturate — 구분은
 sim_time/score-per-sim-s에서만(11/12 ep가 cap 도달, seed 99000만 첫 샷 miss, paired 동일).
 체이닝 길이 차이까지 보려면 cap↑(훨씬 느림). 결과: `experiments/artifacts/lookahead_time_ab/ab_summary.json`.
+
+### 2.2 game_solo proposer eval (`compare_time_proposers.py`, 2026-05-28)
+
+질문: game_solo fine-tune 정책(`runs_game_solo/game_s{1,4,6}`)을 lookahead proposer로 쓰면
+`time_rank=False` 기준으로 true_baseline(비-time, time_rank=False)보다 나은가?
+셋업: true_baseline과 동일 조건(paired seeds, n=12, max_shots=25, k1=100, k2=3, time_rank=False).
+
+| variant | proposer | mean_score | std | score/sim_s | mean_sim_t | 비고 |
+|---|---|---|---|---|---|---|
+| true_baseline | fast_long_fp02 | **22.58** | 6.90 | **0.255** | 88.6s | 기준선(§2.1 재현) |
+| game_solo | runs_game_solo | 20.08 | 8.02 | 0.243 | **82.6s** | game 목적 fine-tune |
+
+**결과: game_solo proposer가 true_baseline보다 나쁨** (mean_score −2.5, score/sim_s −0.012).
+
+**원인 분석:**
+- ep 2 (score=13, sim_t=59.7s), ep 8 (score=9, sim_t=43.7s): game_solo 정책이 inning 중간에
+  miss를 더 자주 냄(게임 종료가 아닌 이닝 종료이므로 miss-tolerant하게 학습됨).
+- game_solo 학습 환경에서 miss/foul은 이닝 reset 후 게임 계속 → miss를 "허용"하는 리스크 모델.
+  lookahead inning env에서는 miss = 에피소드 종료 → miss-tolerance가 점수 손실.
+- sim_time↓(82.6s < 88.6s): 더 짧은 샷 제안(faster travel)은 유지되지만, 점수를 내기 전에
+  miss해서 이닝이 짧아진 것도 포함.
+- std↑: game_solo proposer가 고점은 동일(max=25)이지만 실패 케이스가 늘어 분산 증가.
+
+**결론:** lookahead proposer로는 inning env에서 직접 학습한 fast_long_fp02가 우수. game_solo 정책은
+TimeBudgetGameEnv 맥락(miss 후 계속 플레이)에서만 이점을 보임. proposer와 eval env의 종료 조건
+일치가 중요함. 결과: `experiments/artifacts/lookahead_game_solo/ab_summary.json`.
 
 ---
 
@@ -209,12 +268,15 @@ v2 이전의 단일-env(non-vec) 탐색. 대부분 50k steps, max_shots 작음. 
 
 ---
 
-## 6. 진행 중 / 다음 (2026-05-27~)
+## 6. 진행 중 / 다음 (2026-05-28~)
 - **time_reward 앙상블 fine-tune** ✅ (§1.5): s1/s4/s6 모두 150k step fine-tune 완료.
   표준 eval에서 mean↑·cushions↓ 확인. 시간예산 eval(§1.6)에선 time 정책이 소폭 우위지만
-  n=30 std 내 → 효과 약함. 다음: n_repeats↑ 또는 budget↑로 유의성 재확인, time_alpha sweep 검토.
-- **s6 foul 악화**: time_reward 후 s6만 foul 54→67%. seed 단위 재현/원인 확인 필요.
-- **lookahead time effect 분해** ✅ (§2.1): 3조건(true_baseline/baseline/time) paired 비교로
-  ranking vs proposer 기여 분리. 시간 효율(score/sim_s) 이득은 거의 전부 **랭킹 `TIME_REWARD`
-  토글**(+0.027), proposer 교체는 무의미(+0.002). → lookahead엔 time 정책 불필요, 랭킹만 켜면 됨.
-  다음(선택): max_shots cap↑로 체이닝 길이 차이 확인, time_alpha sweep.
+  n=30 std 내 → 효과 약함.
+- **s6 foul 악화**: time_reward 후 s6만 foul 54→67%. seed 단위 이상치.
+- **lookahead time effect 분해** ✅ (§2.1): 랭킹 `TIME_REWARD` 토글이 시간 효율 이득의 거의 전부.
+  proposer 교체 효과 미미(+0.002). lookahead엔 time 정책 불필요, 랭킹만 켜면 됨.
+- **game_solo fine-tune** ✅ (§1.7): s1/s4/s6 150k 완료. 기준선 대비 mean+0.5~+1.2, std −0.8~−1.7,
+  foul_rate 극적 하락(~70% → ~9%). 가장 강력한 단일 foul 억제 기법으로 확인.
+- **lookahead + game_solo proposer** ✅ (§2.2): game_solo proposer + time_rank=False가 true_baseline
+  대비 mean_score −2.5(20.08 vs 22.58), score/sim_s −0.012. miss-tolerance 불일치가 원인.
+  → lookahead proposer는 inning env 직접 학습 정책(fast_long_fp02)이 우수. game_solo는 게임 맥락 전용.

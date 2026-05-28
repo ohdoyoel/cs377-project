@@ -49,6 +49,11 @@ PROPOSER_SETS = {
         "experiments/runs_inning_v2/fast_time_fp02_s4/policy.zip",
         "experiments/runs_inning_v2/fast_time_fp02_s6/policy.zip",
     ],
+    "game_solo": [
+        "experiments/runs_game_solo/game_s1/policy.zip",
+        "experiments/runs_game_solo/game_s4/policy.zip",
+        "experiments/runs_game_solo/game_s6/policy.zip",
+    ],
 }
 
 # Each condition = (proposer set, whether the lookahead RANKING applies the
@@ -56,12 +61,15 @@ PROPOSER_SETS = {
 #   true_baseline : non-time proposer, no time bonus anywhere (original lookahead)
 #   baseline      : non-time proposer, time bonus only at candidate ranking
 #   time          : time proposer + time bonus at ranking
+#   game_solo     : game-budget fine-tuned proposer, no time bonus at ranking
 # (true_baseline -> baseline) = pure ranking effect;
-# (baseline -> time)          = pure proposer effect.
+# (baseline -> time)          = pure proposer effect (time_reward fine-tune);
+# (true_baseline -> game_solo) = pure proposer effect (game_solo fine-tune).
 VARIANTS = {
-    "true_baseline": {"proposers": "baseline", "time_rank": False},
-    "baseline":      {"proposers": "baseline", "time_rank": True},
-    "time":          {"proposers": "time",     "time_rank": True},
+    "true_baseline": {"proposers": "baseline",  "time_rank": False},
+    "baseline":      {"proposers": "baseline",  "time_rank": True},
+    "time":          {"proposers": "time",      "time_rank": True},
+    "game_solo":     {"proposers": "game_solo", "time_rank": False},
 }
 
 
