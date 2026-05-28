@@ -1,0 +1,254 @@
+{
+  "config": {
+    "n_states": 100,
+    "seed_base": 10000,
+    "n_perturb": 32,
+    "eps_list": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "constrain_aim": true,
+    "extra_features": true,
+    "policies": [
+      [
+        "baseline_s1",
+        "experiments/runs_inning_v2/fast_long_fp02_s1/policy.zip"
+      ],
+      [
+        "robust_s1",
+        "experiments/runs_inning_v2/robust_s1/policy.zip"
+      ],
+      [
+        "baseline_s4",
+        "experiments/runs_inning_v2/fast_long_fp02_s4/policy.zip"
+      ],
+      [
+        "robust_s4",
+        "experiments/runs_inning_v2/robust_s4/policy.zip"
+      ],
+      [
+        "baseline_s6",
+        "experiments/runs_inning_v2/fast_long_fp02_s6/policy.zip"
+      ],
+      [
+        "robust_s6",
+        "experiments/runs_inning_v2/robust_s6/policy.zip"
+      ]
+    ],
+    "total_wall_s": 159.6290788000042
+  },
+  "results": {
+    "baseline_s1": {
+      "n_states": 100,
+      "det_success_rate": 0.48,
+      "per_eps": {
+        "0.020": {
+          "robustness_overall_mean": 0.4571875,
+          "robustness_overall_std": 0.4230490117971861,
+          "robustness_conditional_mean": 0.8567708333333334,
+          "robustness_conditional_std": 0.1890267333995811,
+          "n_conditional": 48
+        },
+        "0.050": {
+          "robustness_overall_mean": 0.42125,
+          "robustness_overall_std": 0.35951509675948207,
+          "robustness_conditional_mean": 0.7369791666666666,
+          "robustness_conditional_std": 0.21290962292827675,
+          "n_conditional": 48
+        },
+        "0.100": {
+          "robustness_overall_mean": 0.3365625,
+          "robustness_overall_std": 0.2822776889081088,
+          "robustness_conditional_mean": 0.5520833333333334,
+          "robustness_conditional_std": 0.22574615246911725,
+          "n_conditional": 48
+        },
+        "0.200": {
+          "robustness_overall_mean": 0.2565625,
+          "robustness_overall_std": 0.22031345144504058,
+          "robustness_conditional_mean": 0.384765625,
+          "robustness_conditional_std": 0.22756336156609358,
+          "n_conditional": 48
+        }
+      },
+      "wall_s": 24.936406100023305
+    },
+    "robust_s1": {
+      "n_states": 100,
+      "det_success_rate": 0.5,
+      "per_eps": {
+        "0.020": {
+          "robustness_overall_mean": 0.4859375,
+          "robustness_overall_std": 0.41863585339315135,
+          "robustness_conditional_mean": 0.87375,
+          "robustness_conditional_std": 0.14765384574492227,
+          "n_conditional": 50
+        },
+        "0.050": {
+          "robustness_overall_mean": 0.4490625,
+          "robustness_overall_std": 0.3690782170102493,
+          "robustness_conditional_mean": 0.756875,
+          "robustness_conditional_std": 0.22590256190333435,
+          "n_conditional": 50
+        },
+        "0.100": {
+          "robustness_overall_mean": 0.385625,
+          "robustness_overall_std": 0.2899782025507184,
+          "robustness_conditional_mean": 0.596875,
+          "robustness_conditional_std": 0.22510361134783408,
+          "n_conditional": 50
+        },
+        "0.200": {
+          "robustness_overall_mean": 0.299375,
+          "robustness_overall_std": 0.23700356809102852,
+          "robustness_conditional_mean": 0.445,
+          "robustness_conditional_std": 0.2259263809116517,
+          "n_conditional": 50
+        }
+      },
+      "wall_s": 27.141285899997456
+    },
+    "baseline_s4": {
+      "n_states": 100,
+      "det_success_rate": 0.48,
+      "per_eps": {
+        "0.020": {
+          "robustness_overall_mean": 0.4715625,
+          "robustness_overall_std": 0.4313944230060902,
+          "robustness_conditional_mean": 0.8880208333333334,
+          "robustness_conditional_std": 0.16808049484763826,
+          "n_conditional": 48
+        },
+        "0.050": {
+          "robustness_overall_mean": 0.4565625,
+          "robustness_overall_std": 0.37829713712680046,
+          "robustness_conditional_mean": 0.794921875,
+          "robustness_conditional_std": 0.2001398125423692,
+          "n_conditional": 48
+        },
+        "0.100": {
+          "robustness_overall_mean": 0.3734375,
+          "robustness_overall_std": 0.31993599299687897,
+          "robustness_conditional_mean": 0.6380208333333334,
+          "robustness_conditional_std": 0.22533158683332147,
+          "n_conditional": 48
+        },
+        "0.200": {
+          "robustness_overall_mean": 0.264375,
+          "robustness_overall_std": 0.23563612725916408,
+          "robustness_conditional_mean": 0.4401041666666667,
+          "robustness_conditional_std": 0.19909132562649814,
+          "n_conditional": 48
+        }
+      },
+      "wall_s": 26.477307299996028
+    },
+    "robust_s4": {
+      "n_states": 100,
+      "det_success_rate": 0.45,
+      "per_eps": {
+        "0.020": {
+          "robustness_overall_mean": 0.4440625,
+          "robustness_overall_std": 0.43511015291585026,
+          "robustness_conditional_mean": 0.8895833333333333,
+          "robustness_conditional_std": 0.1702010425536919,
+          "n_conditional": 45
+        },
+        "0.050": {
+          "robustness_overall_mean": 0.4259375,
+          "robustness_overall_std": 0.3850365396129583,
+          "robustness_conditional_mean": 0.7798611111111111,
+          "robustness_conditional_std": 0.2330888532515036,
+          "n_conditional": 45
+        },
+        "0.100": {
+          "robustness_overall_mean": 0.3628125,
+          "robustness_overall_std": 0.3150431555635263,
+          "robustness_conditional_mean": 0.6166666666666667,
+          "robustness_conditional_std": 0.26123545522800273,
+          "n_conditional": 45
+        },
+        "0.200": {
+          "robustness_overall_mean": 0.2765625,
+          "robustness_overall_std": 0.24459010076590745,
+          "robustness_conditional_mean": 0.44513888888888886,
+          "robustness_conditional_std": 0.23462633829929957,
+          "n_conditional": 45
+        }
+      },
+      "wall_s": 25.75523440001416
+    },
+    "baseline_s6": {
+      "n_states": 100,
+      "det_success_rate": 0.46,
+      "per_eps": {
+        "0.020": {
+          "robustness_overall_mean": 0.464375,
+          "robustness_overall_std": 0.43871629269927737,
+          "robustness_conditional_mean": 0.8804347826086957,
+          "robustness_conditional_std": 0.20029322556624193,
+          "n_conditional": 46
+        },
+        "0.050": {
+          "robustness_overall_mean": 0.43,
+          "robustness_overall_std": 0.3820909957593924,
+          "robustness_conditional_mean": 0.7853260869565217,
+          "robustness_conditional_std": 0.21596528057875167,
+          "n_conditional": 46
+        },
+        "0.100": {
+          "robustness_overall_mean": 0.3715625,
+          "robustness_overall_std": 0.3056991993340592,
+          "robustness_conditional_mean": 0.641983695652174,
+          "robustness_conditional_std": 0.2141588156938023,
+          "n_conditional": 46
+        },
+        "0.200": {
+          "robustness_overall_mean": 0.2825,
+          "robustness_overall_std": 0.23553144828517725,
+          "robustness_conditional_mean": 0.47078804347826086,
+          "robustness_conditional_std": 0.20575510637237945,
+          "n_conditional": 46
+        }
+      },
+      "wall_s": 27.0501171000069
+    },
+    "robust_s6": {
+      "n_states": 100,
+      "det_success_rate": 0.52,
+      "per_eps": {
+        "0.020": {
+          "robustness_overall_mean": 0.5009375,
+          "robustness_overall_std": 0.4290870172852795,
+          "robustness_conditional_mean": 0.8768028846153846,
+          "robustness_conditional_std": 0.19445962921253507,
+          "n_conditional": 52
+        },
+        "0.050": {
+          "robustness_overall_mean": 0.483125,
+          "robustness_overall_std": 0.3693925235977293,
+          "robustness_conditional_mean": 0.7734375,
+          "robustness_conditional_std": 0.23104248439537747,
+          "n_conditional": 52
+        },
+        "0.100": {
+          "robustness_overall_mean": 0.4196875,
+          "robustness_overall_std": 0.30990892352032273,
+          "robustness_conditional_mean": 0.6292067307692307,
+          "robustness_conditional_std": 0.23589408412335544,
+          "n_conditional": 52
+        },
+        "0.200": {
+          "robustness_overall_mean": 0.3190625,
+          "robustness_overall_std": 0.2332747745106183,
+          "robustness_conditional_mean": 0.4519230769230769,
+          "robustness_conditional_std": 0.21601596220557823,
+          "n_conditional": 52
+        }
+      },
+      "wall_s": 27.384402900002897
+    }
+  }
+}

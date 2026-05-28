@@ -11,6 +11,7 @@ Termination semantics:
 
 from __future__ import annotations
 
+import copy
 from dataclasses import asdict
 from typing import Any
 
@@ -71,6 +72,10 @@ class Billiards4BallInningEnv(gym.Env):
         setup_shaping: bool = False,
         setup_alpha: float = 0.05,
         setup_scale: float = 0.3,
+        robust_reward: bool = False,
+        robust_eps: float = 0.05,
+        robust_n: int = 8,
+        robust_alpha: float = 0.2,
     ) -> None:
         super().__init__()
         self._spec = spec or TableSpec()
@@ -115,6 +120,15 @@ class Billiards4BallInningEnv(gym.Env):
         self._setup_shaping = bool(setup_shaping)
         self._setup_alpha = float(setup_alpha)
         self._setup_scale = float(setup_scale)
+        # Action-space robustness bonus. On scoring (non-foul) shots, sample
+        # ``robust_n`` perturbed actions ~ N(0, robust_eps) around the raw
+        # action, replay each from the pre-shot state, and add
+        # ``robust_alpha * success_fraction`` to the reward. Encourages choices
+        # that tolerate motor noise (margin to failure).
+        self._robust_reward = bool(robust_reward)
+        self._robust_eps = float(robust_eps)
+        self._robust_n = int(robust_n)
+        self._robust_alpha = float(robust_alpha)
         obs_dim = OBS_DIM + (EXTRA_FEATURE_DIM if self._extra_features else 0)
 
         self.observation_space = gym.spaces.Box(
@@ -192,6 +206,43 @@ class Billiards4BallInningEnv(gym.Env):
             b=cue_action.b,
         )
 
+    def _estimate_robustness(
+        self,
+        pre_shot_state: TableState,
+        raw_action: np.ndarray,
+    ) -> float:
+        """Fraction of N perturbed actions that still score (non-foul) when
+        replayed from ``pre_shot_state``. Noise is N(0, robust_eps) added to
+        the raw 4-d action; ``_project_action`` then re-projects it onto the
+        valid action manifold, and ``_apply_aim_constraint`` is honored so the
+        perturbation lives in the same constrained-aim window the policy sees.
+
+        Restores ``self._state`` to whatever it pointed to on entry before
+        returning, so the caller's post-shot state is preserved.
+        """
+        saved_state = self._state
+        successes = 0
+        for _ in range(self._robust_n):
+            # Fresh copy per trial: simulate_shot mutates the state.
+            self._state = copy.deepcopy(pre_shot_state)
+            delta = self.np_random.normal(
+                0.0, self._robust_eps, size=4
+            ).astype(np.float64)
+            perturbed_raw = np.asarray(raw_action, dtype=np.float64) + delta
+            pert_action = _project_action(perturbed_raw)
+            if self._constrain_aim:
+                pert_action = self._apply_aim_constraint(pert_action)
+            try:
+                result = simulate_shot(
+                    self._state, pert_action, t_max=self._t_max,
+                )
+                if int(result["score"]) > 0 and not bool(result["fouled"]):
+                    successes += 1
+            except Exception:  # noqa: BLE001 - treat any sim error as fail
+                pass
+        self._state = saved_state
+        return successes / max(1, self._robust_n)
+
     def _calc_gentle_reward(self, events: list) -> float:
         """Gaussian bonus based on cue-ball distance to the second red hit.
 
@@ -247,9 +298,17 @@ class Billiards4BallInningEnv(gym.Env):
         if self._state is None:
             raise RuntimeError("env.step called before env.reset")
 
-        cue_action = _project_action(np.asarray(action, dtype=np.float64))
+        raw_action = np.asarray(action, dtype=np.float64)
+        cue_action = _project_action(raw_action)
         if self._constrain_aim:
             cue_action = self._apply_aim_constraint(cue_action)
+
+        # Snapshot the pre-shot state so we can replay perturbed actions from
+        # the same position when computing the action-space robustness bonus.
+        # Skipped when robust_reward is off to avoid an unnecessary deepcopy.
+        pre_shot_snapshot = (
+            copy.deepcopy(self._state) if self._robust_reward else None
+        )
 
         # simulate_shot mutates state in place and resets per-shot t origin
         # via state.t (which is currently whatever we left it at). We snap
@@ -317,6 +376,12 @@ class Billiards4BallInningEnv(gym.Env):
                 d2 = float(np.hypot(cue.x - r2.x, cue.y - r2.y))
                 d_min = min(d1, d2)
                 reward += self._setup_alpha * float(np.exp(-d_min / self._setup_scale))
+            if score > 0 and self._robust_reward and pre_shot_snapshot is not None:
+                robustness = self._estimate_robustness(
+                    pre_shot_snapshot, raw_action,
+                )
+                reward += self._robust_alpha * robustness
+                record["robustness"] = robustness
 
         if self._continue_on_miss:
             terminated = False
