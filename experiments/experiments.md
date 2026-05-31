@@ -33,6 +33,7 @@ CS377 한국식 4구 당구 RL 프로젝트의 학습/평가 실험 정리.
 | 2026-05-28 | **eval_robustness.py** — 직접 측정: 학습 효과 ±0.02 이내 (유의 X) |
 | 2026-05-28 | **lookahead robust ranking A/B/C** — chosen robustness +0.116 (ranking만으로), proposer 교체 +0.012 |
 | 2026-05-28 | **canonical 50샷 행동 비교** — 둘 다 50/50 득점이나 robust는 **쿠션 1.04→0.64, 2+쿠션 샷 절반↓, high-power × low-margin 회피** *(현재 작업)* |
+| 2026-05-31 | **VALIDATION §1.1** — plain(도메인지식 전부 off) SAC/TD3/PPO 5seed×400k 비교. off-policy(SAC 0.42 / TD3 0.46) ≈ on-policy PPO(0.17)의 2.5배. SAC↔TD3 std 겹쳐 무차별, PPO 200k plateau. `valid_algo/`, [VALIDATION_EXPS.md](VALIDATION_EXPS.md) §1.1 |
 | 2026-05-26 | `time_reward` 추가 (빠른 득점 샷에 보너스) — 코드/테스트 완료, 학습은 미실행 *(현재 작업)* |
 | 2026-05-25 *(오도열)* | **Plain RL 재측정**: PPO/SAC 200k × 3 seeds, **no aim_constraint·shaping·gentle_shot·setup**, random_start만. — PPO 0.00 / SAC 0.015 (천장 확인) |
 | 2026-05-25 *(오도열)* | **Plain ablations**: `angle_sincos`(5D action, θ wrap 제거) + `extra_features` SAC 200k s0 → 0.010 (효과 없음). Curriculum start ramp(d=0→1) 200k s0 → 0.020 (easy mean 0.16, transfer 실패) |

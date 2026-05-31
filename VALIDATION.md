@@ -2,7 +2,7 @@
 ## 0. 4구 당구 도메인에 대한 설명, 공통적 학습 방법에 대한 설명 (실험 x)
 ### 수구, 목적구, 상대구
 ### --time_step 500k -> 50만번 샷을 쳐서 학습한다
-## 1. Algorithm and Learning methods
+## 1. Algorithm and Learning methods in sparse reward
 ### SAC vs PPO vs TD3
 SAC 5 seed result & mean, PPO 5 seed result & mean, TD3 5 seed result & mean  
  → 400k에서 이미 800k의 ~85–90% 성능. 곡선이 명백히 diminishing returns(knee)

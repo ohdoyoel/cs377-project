@@ -1,0 +1,46 @@
+{
+  "config": {
+    "max_shots": 10,
+    "k1": 60,
+    "k2": 2,
+    "seed": 0,
+    "robust_beta": 0.2,
+    "robust_eps": 0.05,
+    "robust_n": 4,
+    "proposers": [
+      "experiments/runs_inning_v2/fast_long_fp02_s1/policy.zip",
+      "experiments/runs_inning_v2/fast_long_fp02_s4/policy.zip",
+      "experiments/runs_inning_v2/fast_long_fp02_s6/policy.zip"
+    ],
+    "canonical_start": true,
+    "continue_on_miss": true
+  },
+  "results": {
+    "true_baseline": {
+      "robust_rank": false,
+      "n_shots": 10,
+      "total_score": 10,
+      "n_scoring_shots": 10,
+      "n_fouls": 0,
+      "mean_cushion_hits": 0.8,
+      "total_sim_time_s": 39.32819553026048,
+      "mean_chosen_robustness": 0.75,
+      "std_chosen_robustness": 0.22360679774997896,
+      "wall_s": 5.035601000010502,
+      "html": "experiments\\artifacts\\canonical_robust_smoke\\variant_true_baseline.html"
+    },
+    "baseline_robust": {
+      "robust_rank": true,
+      "n_shots": 10,
+      "total_score": 10,
+      "n_scoring_shots": 10,
+      "n_fouls": 0,
+      "mean_cushion_hits": 0.9,
+      "total_sim_time_s": 41.95063382055172,
+      "mean_chosen_robustness": 0.825,
+      "std_chosen_robustness": 0.225,
+      "wall_s": 7.966174400004093,
+      "html": "experiments\\artifacts\\canonical_robust_smoke\\variant_baseline_robust.html"
+    }
+  }
+}

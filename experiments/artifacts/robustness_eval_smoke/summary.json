@@ -1,0 +1,68 @@
+{
+  "config": {
+    "n_states": 10,
+    "seed_base": 10000,
+    "n_perturb": 8,
+    "eps_list": [
+      0.05,
+      0.1
+    ],
+    "constrain_aim": true,
+    "extra_features": true,
+    "policies": [
+      [
+        "baseline_s4",
+        "experiments/runs_inning_v2/fast_long_fp02_s4/policy.zip"
+      ],
+      [
+        "robust_s4",
+        "experiments/runs_inning_v2/robust_s4/policy.zip"
+      ]
+    ],
+    "total_wall_s": 1.917721999983769
+  },
+  "results": {
+    "baseline_s4": {
+      "n_states": 10,
+      "det_success_rate": 0.6,
+      "per_eps": {
+        "0.050": {
+          "robustness_overall_mean": 0.6875,
+          "robustness_overall_std": 0.40073716795148634,
+          "robustness_conditional_mean": 0.9791666666666666,
+          "robustness_conditional_std": 0.05103103630798288,
+          "n_conditional": 6
+        },
+        "0.100": {
+          "robustness_overall_mean": 0.575,
+          "robustness_overall_std": 0.3395258131243894,
+          "robustness_conditional_mean": 0.7083333333333334,
+          "robustness_conditional_std": 0.2041241452319315,
+          "n_conditional": 6
+        }
+      },
+      "wall_s": 0.40722740002092905
+    },
+    "robust_s4": {
+      "n_states": 10,
+      "det_success_rate": 0.6,
+      "per_eps": {
+        "0.050": {
+          "robustness_overall_mean": 0.65,
+          "robustness_overall_std": 0.39878287046684663,
+          "robustness_conditional_mean": 0.8958333333333334,
+          "robustness_conditional_std": 0.20026024734496528,
+          "n_conditional": 6
+        },
+        "0.100": {
+          "robustness_overall_mean": 0.5125,
+          "robustness_overall_std": 0.2853482278043989,
+          "robustness_conditional_mean": 0.6458333333333334,
+          "robustness_conditional_std": 0.20026024734496528,
+          "n_conditional": 6
+        }
+      },
+      "wall_s": 0.38598190000629984
+    }
+  }
+}

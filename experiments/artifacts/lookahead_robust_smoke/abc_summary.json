@@ -1,0 +1,64 @@
+{
+  "config": {
+    "n_eps": 2,
+    "max_shots": 10,
+    "k1": 30,
+    "k2": 2,
+    "seed_base": 99000,
+    "robust_beta": 0.2,
+    "robust_eps": 0.05,
+    "robust_n": 4
+  },
+  "results": {
+    "true_baseline": {
+      "mean_score": 5.0,
+      "std_score": 5.0,
+      "max_score": 10,
+      "mean_shots": 5.5,
+      "mean_sim_time_s": 21.907659030954044,
+      "score_per_sim_s": 0.2282306837501596,
+      "mean_chosen_robustness": 0.65,
+      "std_chosen_robustness": 0.0,
+      "n_eps_with_score": 1,
+      "scores": [
+        0,
+        10
+      ],
+      "sim_times": [
+        3.360336968838899,
+        40.454981093069186
+      ],
+      "chosen_robustness_per_ep": [
+        null,
+        0.65
+      ],
+      "proposers": "baseline",
+      "robust_rank": false
+    },
+    "baseline_robust": {
+      "mean_score": 5.0,
+      "std_score": 5.0,
+      "max_score": 10,
+      "mean_shots": 5.5,
+      "mean_sim_time_s": 23.483217738724655,
+      "score_per_sim_s": 0.21291801045453934,
+      "mean_chosen_robustness": 0.825,
+      "std_chosen_robustness": 0.0,
+      "n_eps_with_score": 1,
+      "scores": [
+        0,
+        10
+      ],
+      "sim_times": [
+        3.360336968838899,
+        43.60609850861041
+      ],
+      "chosen_robustness_per_ep": [
+        null,
+        0.825
+      ],
+      "proposers": "baseline",
+      "robust_rank": true
+    }
+  }
+}

@@ -72,14 +72,14 @@ TD3_BUFFER = 200_000
 TD3_LEARNING_STARTS = 1_000
 TD3_ACTION_NOISE_SIGMA = 0.1  # exploration noise stddev (action space scale)
 
-# PPO (excluded from training — kept for reference)
-# PPO_N_STEPS = 512
-# PPO_BATCH = 512
-# PPO_N_EPOCHS = 4
-# PPO_GAE = 0.95
-# PPO_CLIP = 0.2
-# PPO_VF = 0.5
-# PPO_ENT = 0.01
+# PPO (on-policy; re-enabled for the §1 algorithm comparison)
+PPO_N_STEPS = 512
+PPO_BATCH = 512
+PPO_N_EPOCHS = 4
+PPO_GAE = 0.95
+PPO_CLIP = 0.2
+PPO_VF = 0.5
+PPO_ENT = 0.01
 
 
 # ---------------------------------------------------------------- IO helpers
@@ -361,7 +361,7 @@ def main() -> None:
     parser.add_argument("--total_steps", type=int, default=100_000)
     parser.add_argument("--max_shots", type=int, default=50)
     parser.add_argument("--eval_episodes", type=int, default=200)
-    parser.add_argument("--algo", type=str, choices=("sac", "td3"), default="sac")
+    parser.add_argument("--algo", type=str, choices=("sac", "td3", "ppo"), default="sac")
     parser.add_argument("--out_dir", type=str, default="experiments/runs_inning")
     parser.add_argument(
         "--continue_on_miss",
@@ -508,16 +508,16 @@ def main() -> None:
                 "learning_starts": TD3_LEARNING_STARTS,
                 "action_noise_sigma": TD3_ACTION_NOISE_SIGMA,
             })
-        # else:
-        #     config.update({
-        #         "n_steps": PPO_N_STEPS,
-        #         "batch_size": PPO_BATCH,
-        #         "n_epochs": PPO_N_EPOCHS,
-        #         "gae_lambda": PPO_GAE,
-        #         "clip_range": PPO_CLIP,
-        #         "vf_coef": PPO_VF,
-        #         "ent_coef": PPO_ENT,
-        #     })
+        elif args.algo == "ppo":
+            config.update({
+                "n_steps": PPO_N_STEPS,
+                "batch_size": PPO_BATCH,
+                "n_epochs": PPO_N_EPOCHS,
+                "gae_lambda": PPO_GAE,
+                "clip_range": PPO_CLIP,
+                "vf_coef": PPO_VF,
+                "ent_coef": PPO_ENT,
+            })
         with (out_dir / "config.json").open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
@@ -604,23 +604,28 @@ def main() -> None:
                     verbose=0,
                     device="cpu",
                 )
-        # else:
-        #     model = PPO(
-        #         policy="MlpPolicy",
-        #         env=env,
-        #         learning_rate=LR,
-        #         n_steps=PPO_N_STEPS,
-        #         batch_size=PPO_BATCH,
-        #         n_epochs=PPO_N_EPOCHS,
-        #         gamma=GAMMA,
-        #         gae_lambda=PPO_GAE,
-        #         clip_range=PPO_CLIP,
-        #         vf_coef=PPO_VF,
-        #         ent_coef=PPO_ENT,
-        #         seed=int(args.seed),
-        #         verbose=0,
-        #         device="cpu",
-        #     )
+        elif args.algo == "ppo":
+            if args.load_policy:
+                model = PPO.load(args.load_policy, env=env, device="cpu")
+                print(f"[run_inning] loaded PPO policy <- {args.load_policy}")
+            else:
+                model = PPO(
+                    policy="MlpPolicy",
+                    env=env,
+                    learning_rate=LR,
+                    n_steps=PPO_N_STEPS,
+                    batch_size=PPO_BATCH,
+                    n_epochs=PPO_N_EPOCHS,
+                    gamma=float(args.gamma),
+                    gae_lambda=PPO_GAE,
+                    clip_range=PPO_CLIP,
+                    vf_coef=PPO_VF,
+                    ent_coef=PPO_ENT,
+                    policy_kwargs=policy_kwargs,
+                    seed=int(args.seed),
+                    verbose=0,
+                    device="cpu",
+                )
 
         try:
             cb = InningCurveCallback(out_dir / "training_curve.csv")

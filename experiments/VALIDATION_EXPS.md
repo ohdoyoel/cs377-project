@@ -68,27 +68,45 @@
 
 ### 1.1 SAC vs PPO vs TD3
 
-- **status**: ⬜ 미실행
-- **date**:
+- **status**: ✅ 완료
+- **date**: 2026-05-31
 - **가설**: sparse {0,1} scoring 환경에서 off-policy(SAC/TD3)가 on-policy(PPO)보다 우세하다.
-- **설정**: algo ∈ {SAC, PPO, TD3} / **steps=400k (near-plateau — SAC 400k는 800k의 ~85–90%,
-  곡선이 이미 knee 구간이라 순위 역전 없음; `training_curve.csv`로 곡선 함께 보고)** / seeds=5 (s0~s4)
+- **설정**: algo ∈ {SAC, PPO, TD3} / **steps=400k (near-plateau — 곡선이 이미 knee 구간이라
+  순위 역전 없음; `training_curve.csv`로 곡선 함께 보고)** / seeds=5 (s0~s4)
   / eval(innings=100, max_shots=10) / n_envs=8.
-  - **공통 env flag (3 algo 동일)**: `constrain_aim + extra_features + random_start +
-    continue_on_miss + gentle_shot + setup_shaping(α=0.05, scale=0.3) + foul_penalty=0.2`.
-    프로젝트 표준 학습 설정(SOTA SAC 라인과 동일) — 각 알고리즘에 공정한 학습 가능 backdrop 제공.
+  - **공통 env flag (3 algo 동일) — PLAIN**: `random_start + continue_on_miss + foul_penalty=0.0`
+    만. **도메인 지식 전부 OFF** (no `constrain_aim` / `extra_features` / `gentle_shot` /
+    `setup_shaping`), reward = 순수 {0,1} carom score. §1.1은 **bare sparse 문제에서 알고리즘
+    자체 성능**만 비교 — 도메인 지식은 §3에서 별도. (env 구조만 유지: random_start·continue_on_miss.)
   - SAC/TD3만: `gradient_steps=2, buffer_size=200000`. PPO: `n_steps=512, n_epochs=4`.
   - **budget 의존성 검증**: 단일 to-400k run의 곡선이 곧 모든 짧은 budget의 답(prefix). budget을
     따로 sweep하지 않고 곡선 교차 여부로 "순위 역전" 판단.
+  - **예상**: sparse라 셋 다 낮을 것(experiments.md §7 plain: PPO 0.000, SAC ~0.015). 이 천장이
+    §2·§3(도메인 지식 도입) 동기를 부여.
 - **결과**: *(mean = inning당 평균 득점, eval 100 innings, max_shots=10)*
 
   | algo | s0 | s1 | s2 | s3 | s4 | **mean±std** | foul% | wall/run |
   |---|---|---|---|---|---|---|---|---|
-  | SAC |  |  |  |  |  |  |  |  |
-  | TD3 |  |  |  |  |  |  |  |  |
-  | PPO |  |  |  |  |  |  |  |  |
+  | **TD3** | 0.56 | 0.44 | 0.62 | 0.33 | 0.35 | **0.460±0.114** | 84 | ~10min |
+  | **SAC** | 0.43 | 0.39 | 0.48 | 0.42 | 0.37 | **0.418±0.038** | 90 | ~15min |
+  | **PPO** | 0.16 | 0.11 | 0.22 | 0.15 | 0.21 | **0.170±0.040** | 70 | ~5min |
 
-- **판정**:
+  **학습 곡선 (s0, ep_return_mean @ 100k→200k→300k→400k):**
+
+  | algo | 100k | 200k | 300k | 400k | 형태 |
+  |---|---|---|---|---|---|
+  | SAC | 0.26 | 0.33 | 0.37 | 0.44 | 완만 상승(미수렴) |
+  | TD3 | 0.28 | 0.35 | 0.53 | 0.45 | noisy, ~0.4–0.5 band |
+  | PPO | 0.11 | 0.17 | 0.18 | 0.14 | **200k에 평탄(plateau)** |
+
+- **판정**: ✅ 가설 채택. **off-policy(SAC/TD3)가 on-policy(PPO)의 ~2.5배** (0.42–0.46 vs 0.17).
+  - **SAC vs TD3 구분 불가** — TD3 0.460±0.114, SAC 0.418±0.038로 std 겹침. TD3가 평균은 약간 높으나
+    seed 분산이 큼(0.33~0.62). 안정성은 SAC 우위.
+  - **순위 역전 없음**: PPO는 200k에 ~0.15로 평탄, off-policy 쌍은 별도 band(0.4+)에서 완만 상승 →
+    더 학습해도 PPO가 따라잡을 수 없음. 400k budget의 결론은 budget-robust.
+  - **전부 <0.5 (sparse 천장)**: foul_penalty=0이라 fouls free → 70~90% foul. plain 환경의 한계가
+    분명 → §2·§3(도메인 지식 도입)의 동기. ⚠️ max_shots=10·continue_on_miss=True라 mean은 "10샷 중
+    득점 비율"; experiments.md §7 plain(continue_on_miss=False, max_shots=50; SAC 0.015)과 **직접 비교 불가**.
 - **원본**: `experiments/runs_inning_v2/valid_algo/{sac,td3,ppo}_s{0..4}/summary.json`
   (곡선: 각 run `training_curve.csv`)
 - **재현**: `powershell -File experiments/run_validation_algo.ps1`
