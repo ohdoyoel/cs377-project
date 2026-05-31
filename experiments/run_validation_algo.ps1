@@ -24,6 +24,9 @@ param(
   [string]   $OutRoot = 'experiments/runs_inning_v2/valid_algo'
 )
 
+# Run from the repo root regardless of the caller's CWD (script lives in experiments/).
+Set-Location (Split-Path -Parent $PSScriptRoot)
+
 # --- Fixed env config (held identical across algorithms). ---------------------
 # PLAIN setup: NO domain knowledge (no constrain_aim / extra_features /
 # gentle_shot / setup_shaping). Reward = pure {0,1} carom score (foul_penalty=0).

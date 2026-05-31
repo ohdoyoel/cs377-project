@@ -1,0 +1,268 @@
+{
+  "protocol": {
+    "continue_on_miss": true,
+    "max_shots": 10,
+    "eval_n": 100,
+    "seed_base": 20000,
+    "constrain_aim": false,
+    "extra_features": false
+  },
+  "results": {
+    "canon_reset": {
+      "random": {
+        "per_seed": [
+          {
+            "mean": 0.01,
+            "max": 1,
+            "p_ge1": 1.0,
+            "p_ge3": 0.0,
+            "foul_rate": 45.0,
+            "seed": 0
+          },
+          {
+            "mean": 0.1,
+            "max": 1,
+            "p_ge1": 10.0,
+            "p_ge3": 0.0,
+            "foul_rate": 48.0,
+            "seed": 1
+          },
+          {
+            "mean": 0.11,
+            "max": 1,
+            "p_ge1": 11.0,
+            "p_ge3": 0.0,
+            "foul_rate": 62.0,
+            "seed": 2
+          }
+        ],
+        "mean": 0.07333333333333333,
+        "std": 0.044969125210773474,
+        "foul_rate": 51.666666666666664
+      },
+      "canonical": {
+        "per_seed": [
+          {
+            "mean": 0.0,
+            "max": 0,
+            "p_ge1": 0.0,
+            "p_ge3": 0.0,
+            "foul_rate": 100.0,
+            "seed": 0
+          },
+          {
+            "mean": 1.0,
+            "max": 1,
+            "p_ge1": 100.0,
+            "p_ge3": 0.0,
+            "foul_rate": 100.0,
+            "seed": 1
+          },
+          {
+            "mean": 2.0,
+            "max": 2,
+            "p_ge1": 100.0,
+            "p_ge3": 0.0,
+            "foul_rate": 0.0,
+            "seed": 2
+          }
+        ],
+        "mean": 1.0,
+        "std": 0.816496580927726,
+        "foul_rate": 66.66666666666667
+      }
+    },
+    "canon_cont": {
+      "random": {
+        "per_seed": [
+          {
+            "mean": 0.32,
+            "max": 3,
+            "p_ge1": 27.0,
+            "p_ge3": 1.0,
+            "foul_rate": 92.0,
+            "seed": 0
+          },
+          {
+            "mean": 0.25,
+            "max": 1,
+            "p_ge1": 25.0,
+            "p_ge3": 0.0,
+            "foul_rate": 83.0,
+            "seed": 1
+          },
+          {
+            "mean": 0.49,
+            "max": 3,
+            "p_ge1": 39.0,
+            "p_ge3": 2.0,
+            "foul_rate": 91.0,
+            "seed": 2
+          }
+        ],
+        "mean": 0.35333333333333333,
+        "std": 0.10077477638553982,
+        "foul_rate": 88.66666666666667
+      },
+      "canonical": {
+        "per_seed": [
+          {
+            "mean": 1.0,
+            "max": 1,
+            "p_ge1": 100.0,
+            "p_ge3": 0.0,
+            "foul_rate": 100.0,
+            "seed": 0
+          },
+          {
+            "mean": 2.0,
+            "max": 2,
+            "p_ge1": 100.0,
+            "p_ge3": 0.0,
+            "foul_rate": 0.0,
+            "seed": 1
+          },
+          {
+            "mean": 1.0,
+            "max": 1,
+            "p_ge1": 100.0,
+            "p_ge3": 0.0,
+            "foul_rate": 100.0,
+            "seed": 2
+          }
+        ],
+        "mean": 1.3333333333333333,
+        "std": 0.4714045207910317,
+        "foul_rate": 66.66666666666667
+      }
+    },
+    "rand_reset": {
+      "random": {
+        "per_seed": [
+          {
+            "mean": 0.39,
+            "max": 2,
+            "p_ge1": 32.0,
+            "p_ge3": 0.0,
+            "foul_rate": 88.0,
+            "seed": 0
+          },
+          {
+            "mean": 0.36,
+            "max": 2,
+            "p_ge1": 33.0,
+            "p_ge3": 0.0,
+            "foul_rate": 90.0,
+            "seed": 1
+          },
+          {
+            "mean": 0.47,
+            "max": 3,
+            "p_ge1": 38.0,
+            "p_ge3": 2.0,
+            "foul_rate": 86.0,
+            "seed": 2
+          }
+        ],
+        "mean": 0.4066666666666667,
+        "std": 0.046427960923947055,
+        "foul_rate": 88.0
+      },
+      "canonical": {
+        "per_seed": [
+          {
+            "mean": 1.0,
+            "max": 1,
+            "p_ge1": 100.0,
+            "p_ge3": 0.0,
+            "foul_rate": 0.0,
+            "seed": 0
+          },
+          {
+            "mean": 1.0,
+            "max": 1,
+            "p_ge1": 100.0,
+            "p_ge3": 0.0,
+            "foul_rate": 100.0,
+            "seed": 1
+          },
+          {
+            "mean": 0.0,
+            "max": 0,
+            "p_ge1": 0.0,
+            "p_ge3": 0.0,
+            "foul_rate": 0.0,
+            "seed": 2
+          }
+        ],
+        "mean": 0.6666666666666666,
+        "std": 0.4714045207910317,
+        "foul_rate": 33.333333333333336
+      }
+    },
+    "rand_cont": {
+      "random": {
+        "per_seed": [
+          {
+            "mean": 0.44,
+            "max": 2,
+            "p_ge1": 36.0,
+            "p_ge3": 0.0,
+            "foul_rate": 90.0,
+            "seed": 0
+          },
+          {
+            "mean": 0.45,
+            "max": 4,
+            "p_ge1": 36.0,
+            "p_ge3": 1.0,
+            "foul_rate": 86.0,
+            "seed": 1
+          },
+          {
+            "mean": 0.47,
+            "max": 3,
+            "p_ge1": 37.0,
+            "p_ge3": 1.0,
+            "foul_rate": 90.0,
+            "seed": 2
+          }
+        ],
+        "mean": 0.4533333333333333,
+        "std": 0.012472191289246459,
+        "foul_rate": 88.66666666666667
+      },
+      "canonical": {
+        "per_seed": [
+          {
+            "mean": 0.0,
+            "max": 0,
+            "p_ge1": 0.0,
+            "p_ge3": 0.0,
+            "foul_rate": 100.0,
+            "seed": 0
+          },
+          {
+            "mean": 0.0,
+            "max": 0,
+            "p_ge1": 0.0,
+            "p_ge3": 0.0,
+            "foul_rate": 100.0,
+            "seed": 1
+          },
+          {
+            "mean": 2.0,
+            "max": 2,
+            "p_ge1": 100.0,
+            "p_ge3": 0.0,
+            "foul_rate": 100.0,
+            "seed": 2
+          }
+        ],
+        "mean": 0.6666666666666666,
+        "std": 0.9428090415820634,
+        "foul_rate": 100.0
+      }
+    }
+  }
+}

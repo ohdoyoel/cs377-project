@@ -114,23 +114,63 @@
 
 ### 1.2 학습 패러다임 4종 (start × miss 처리)
 
-- **status**: ⬜ 미실행
-- **date**:
+- **status**: ✅ 완료
+- **date**: 2026-05-31
 - **가설**: canonical start vs random start, continue-on-miss vs reset-on-miss 4조합 중
   일반화에 유리한 조합이 있다.
-- **설정**: algo=SAC / steps=___ / seeds=5 / eval(innings=100, max_shots=10).
+- **설정**: algo=SAC / **steps=400k** / **seeds=3** / **plain env** (도메인지식 전부 off,
+  reward = 순수 {0,1} score, foul_penalty=0) — §1.1과 동일 backdrop. 4 method = start(canonical/
+  random) × on-miss(reset/continue) 2×2만 변화.
+  - **학습**: 각 method는 자기 episode 구조로 학습 (reset → miss 시 종료, continue → 항상 10샷).
+    → **training curve(ep_return_mean)는 각자의 학습 동역학** 반영.
+  - **⚠️ eval은 통일**: method 간 비교를 위해 **전부 `continue_on_miss=True, max_shots=10`** 으로
+    재평가 (= "10샷 중 득점 점수"). 학습 시작조건과 무관하게 동일 프로토콜. start는 random(일반화)·
+    canonical(고정 rack) 둘 다 측정. paired(고정 seed_base=20000, 모든 정책 동일 rack).
+    *(trainer의 per-run summary.json eval은 학습설정 따라가 비교 불가 — 무시. `eval_learnmethod.py` 사용.)*
 - **결과**:
 
-  | start | on-miss | **mean** | max | p3 | foul% | 비고 |
-  |---|---|---|---|---|---|---|
-  | canonical | continue |  |  |  |  |  |
-  | canonical | reset |  |  |  |  |  |
-  | random | continue |  |  |  |  |  |
-  | random | reset |  |  |  |  |  |
+  **(a) Training curve** (ep_return_mean, 3-seed 평균) — `artifacts/valid_learnmethod/learnmethod_curves.png`
 
-- **판정**:
-- **원본**:
-- **재현**:
+  | method | 100k | 200k | 300k | 400k | 형태 |
+  |---|---|---|---|---|---|
+  | canon_reset (canonical, reset) | 0.95 | 0.96 | 0.86 | 0.84 | 높게 시작·정체↓ |
+  | canon_cont (canonical, continue) | 0.28 | 0.47 | 1.11 | **1.44** | 강한 상승 |
+  | rand_reset (random, reset) | 0.03 | 0.04 | 0.04 | 0.04 | 바닥 정체 |
+  | rand_cont (random, continue) | 0.26 | 0.34 | 0.35 | 0.37 | 완만 상승 |
+
+  > ⚠️ ep_return 구조가 달라 **곡선끼리 직접 비교 불가**: reset은 "miss 전까지 점수", continue는
+  > "10샷 누적". canon_cont 1.44는 고정 rack 누적 overfit, canon_reset 0.84는 구조상 상한이 낮음.
+  > → 공정 비교는 (b) 통일 eval로.
+
+  **(b) 통일 eval** — `continue_on_miss=True, max_shots=10, n=100` (10샷 중 득점, paired)
+
+  | method | **random start** mean±std | canonical start mean±std | random foul% |
+  |---|---|---|---|
+  | canon_reset | 0.073±0.045 | 1.00±0.82 | 52 |
+  | canon_cont | 0.353±0.101 | 1.33±0.47 | 89 |
+  | rand_reset | 0.407±0.046 | 0.67±0.47 | 88 |
+  | **rand_cont** | **0.453±0.012** | 0.67±0.94 | 89 |
+
+  > ⚠️ canonical eval은 deterministic → 100 inning이 동일 = seed당 1 effective sample(정수값), 저해상도.
+  > **random start eval이 주 지표**(일반화 측정).
+
+- **판정**: ✅ **rand_cont (random start + continue on miss)가 최선** — 일반화 eval에서 mean 0.453,
+  **std 0.012로 최고이자 가장 안정**. 프로젝트 v2 표준 패러다임을 검증.
+  - **continue_on_miss가 지배적 요인**: reset→continue가 random·canonical 양쪽에서 큰 향상. 한 episode에
+    다양한 mid-rack 상태를 노출 → 학습 신호 풍부.
+  - **canon_reset 일반화 전멸 (0.073)**: 고정 rack + miss 즉시 종료 → 그 rack에만 overfit, random rack에서
+    거의 0. canonical 단독 시작의 위험을 명확히 보여줌.
+  - **흥미로운 발견 — canon_cont가 random eval 0.353으로 선전**: 시작이 고정이어도 continue_on_miss가
+    mid-rack 다양성을 만들어 **random_start를 부분적으로 대체**. 일반화에 필요한 "state diversity"는
+    시작 랜덤화든 continue든 어느 쪽에서 와도 기여.
+  - **training curve ↔ eval 역전이 핵심 교훈**: 곡선만 보면 canon_cont(1.44) > canon_reset(0.84) ≫
+    rand_cont(0.37)로 정반대 결론. 통일 eval에서는 rand_cont(0.453) > canon_cont(0.353) ≫ canon_reset(0.073).
+    → **trainer 자체 metric으로 method를 비교하면 틀린다.** 통일 eval의 필요성 입증.
+- **원본**: `experiments/runs_inning_v2/valid_learnmethod/{method}_s{0..2}/` (학습곡선),
+  `experiments/artifacts/valid_learnmethod/{learnmethod_curves.png, eval_unified.json}`
+- **재현**: `powershell -File experiments/run_validation_learnmethod.ps1` →
+  `uv run python experiments/plot_learnmethod_curves.py` (곡선) →
+  `uv run python experiments/eval_learnmethod.py` (통일 eval)
 
 ---
 
